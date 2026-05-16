@@ -19,6 +19,16 @@ Paragraph& Paragraph::addEquation(const std::string& latex) {
     return *this;
 }
 
+Paragraph& Paragraph::addPageNumber() {
+    m_runs.push_back({"", RunStyle(), RunKind::PageField});
+    return *this;
+}
+
+Paragraph& Paragraph::addPageCount() {
+    m_runs.push_back({"", RunStyle(), RunKind::NumPagesField});
+    return *this;
+}
+
 Paragraph& Paragraph::setAlignment(Alignment align) {
     m_alignment = align;
     m_hasAlignment = true;
@@ -73,6 +83,13 @@ std::string Paragraph::toXml() const {
             // Inline equation: m:oMath inside w:r
             std::string eqXml = Equation(run.content, EquationMode::Inline).toXml();
             xml += "<w:r>" + eqXml + "</w:r>";
+        } else if (run.kind == RunKind::PageField || run.kind == RunKind::NumPagesField) {
+            const char* instr = (run.kind == RunKind::PageField) ? " PAGE " : " NUMPAGES ";
+            xml += "<w:r><w:fldChar w:fldCharType=\"begin\"/></w:r>"
+                   "<w:r><w:instrText xml:space=\"preserve\">" + std::string(instr) + "</w:instrText></w:r>"
+                   "<w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>"
+                   "<w:r><w:t>1</w:t></w:r>"
+                   "<w:r><w:fldChar w:fldCharType=\"end\"/></w:r>";
         } else {
             xml += "<w:r>";
             if (run.style.hasFormatting()) {

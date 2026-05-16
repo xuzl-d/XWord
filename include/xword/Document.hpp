@@ -82,6 +82,20 @@ public:
     Equation& addEquation(const std::string& latex);
     Equation& addDisplayEquation(const std::string& latex);
 
+    // ---- Header / Footer ----
+    // Convenience overload: a single centered text line.
+    Document& setHeader(const std::string& text);
+    Document& setFooter(const std::string& text);
+    // Builder overload: returns a Paragraph& so callers can do rich text /
+    // page numbers / alignment, e.g.
+    //   doc.setFooter().addRun("第 ").addPageNumber()
+    //                  .addRun(" 页 / 共 ").addPageCount().addRun(" 页")
+    //                  .setAlignment(Alignment::Center);
+    Paragraph& setHeader();
+    Paragraph& setFooter();
+    void clearHeader();
+    void clearFooter();
+
     // ---- Save ----
     bool save(const std::string& filepath);
 
@@ -111,6 +125,8 @@ private:
     std::string buildNumberingXml();
     std::string buildStylesXml();
     std::string buildHeadingNumberingXml();
+    std::string buildHeaderXml();
+    std::string buildFooterXml();
 
     Page m_page;
     std::vector<std::unique_ptr<Paragraph>> m_paragraphs;
@@ -132,6 +148,8 @@ private:
     bool m_tableNumbering = false;
     std::string m_tableNumPrefix = "表";
     CaptionNumStyle m_tableNumStyle = CaptionNumStyle::Sequential;
+    std::unique_ptr<Paragraph> m_header;
+    std::unique_ptr<Paragraph> m_footer;
 };
 
 } // namespace xword

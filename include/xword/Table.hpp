@@ -25,6 +25,7 @@ public:
     Cell() = default;
 
     Paragraph& addParagraph(const std::string& text = "");
+    Paragraph& addParagraph(const std::string& text, const RunStyle& style);
 
     // Convenience: add inline equation directly
     Paragraph& addEquation(const std::string& latex);

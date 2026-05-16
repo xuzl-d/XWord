@@ -1,6 +1,7 @@
 #include "xword/xword.hpp"
 #include <iostream>
 #include <filesystem>
+#include <cmath>
 #include <string>
 
 int main() {
@@ -13,6 +14,13 @@ int main() {
         .setSize(PageSize::A4)
         .setOrientation(Orientation::Portrait)
         .setMargins(2.54, 2.54, 3.0, 3.0));
+
+    // ---- Header / Footer ----
+    doc.setHeader("XWord 演示文档");
+    doc.setFooter()
+        .addRun("第 ").addPageNumber()
+        .addRun(" 页 / 共 ").addPageCount().addRun(" 页")
+        .setAlignment(Alignment::Center);
 
     // ---- Heading style customization ----
     doc.setHeadingStyle(1, HeadingStyle()
@@ -75,7 +83,7 @@ int main() {
     auto& table = doc.addTable(5, 4);
     table.setHeaderRow(0).setStyle(TableStyle::Grid).setCaption("学生成绩表");
 
-    table.cell(0, 0).addParagraph("姓名");
+    table.cell(0, 0).addParagraph("姓名", RunStyle().bold());
     table.cell(0, 1).addParagraph("语文");
     table.cell(0, 2).addParagraph("数学");
     table.cell(0, 3).addParagraph("英语");
@@ -131,7 +139,7 @@ int main() {
     table3.cell(0, 1).addParagraph("公式");
 
     table3.cell(1, 0).addParagraph("求和");
-    table3.cell(1, 1).addEquation("\\sum_{i=1}^{n} x_i");
+    table3.cell(1, 1).addEquation("\\sum_{i=1}^{n} x_i+y_i");
 
     table3.cell(2, 0).addParagraph("积分");
     table3.cell(2, 1).addEquation("\\int_{0}^{\\infty} e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}");
@@ -196,6 +204,17 @@ int main() {
     doc.addDisplayEquation("E = mc^2");
     doc.addDisplayEquation("\\sum_{i=1}^{n} x_i = x_1 + x_2 + \\cdots + x_n");
     doc.addDisplayEquation("\\int_{0}^{\\infty} e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}");
+
+    // printf-style helper: inject computed values into a LaTeX template
+    // without {{}} escaping noise.
+    double a_ = 1.0, b_ = -5.0, c_ = 6.0;
+    double delta = b_ * b_ - 4 * a_ * c_;
+    doc.addParagraph("带计算结果的公式（xword::format）：");
+    doc.addDisplayEquation(
+        xword::format("\\Delta = b^2 - 4ac = %.2f", delta));
+    doc.addDisplayEquation(
+        xword::format("x_1 = \\frac{-b + \\sqrt{\\Delta}}{2a} = %.3f",
+                      (-b_ + std::sqrt(delta)) / (2 * a_)));
 
     doc.addParagraph("矩阵公式：");
     doc.addDisplayEquation(

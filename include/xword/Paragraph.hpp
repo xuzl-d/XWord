@@ -21,6 +21,11 @@ public:
     // Add an inline LaTeX equation run (mixed with text)
     Paragraph& addEquation(const std::string& latex);
 
+    // Insert a Word PAGE field (current page number).
+    Paragraph& addPageNumber();
+    // Insert a Word NUMPAGES field (total page count).
+    Paragraph& addPageCount();
+
     // Set paragraph alignment
     Paragraph& setAlignment(Alignment align);
 
@@ -36,7 +41,7 @@ public:
     std::string toXml() const;
 
 private:
-    enum RunKind { Text, InlineEquation };
+    enum RunKind { Text, InlineEquation, PageField, NumPagesField };
 
     struct RunEntry {
         std::string content;

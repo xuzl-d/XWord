@@ -7,3 +7,4 @@
 #include "Image.hpp"
 #include "Equation.hpp"
 #include "Types.hpp"
+#include "Format.hpp"

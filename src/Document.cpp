@@ -131,6 +131,37 @@ Document& Document::setHeadingNumFormat(HeadingNumFormat fmt) {
     return *this;
 }
 
+Document& Document::setHeader(const std::string& text) {
+    m_header = std::make_unique<Paragraph>();
+    if (!text.empty()) m_header->addRun(text);
+    m_header->setAlignment(Alignment::Center);
+    m_header->setFirstLineIndent(0);
+    return *this;
+}
+
+Document& Document::setFooter(const std::string& text) {
+    m_footer = std::make_unique<Paragraph>();
+    if (!text.empty()) m_footer->addRun(text);
+    m_footer->setAlignment(Alignment::Center);
+    m_footer->setFirstLineIndent(0);
+    return *this;
+}
+
+Paragraph& Document::setHeader() {
+    m_header = std::make_unique<Paragraph>();
+    m_header->setFirstLineIndent(0);
+    return *m_header;
+}
+
+Paragraph& Document::setFooter() {
+    m_footer = std::make_unique<Paragraph>();
+    m_footer->setFirstLineIndent(0);
+    return *m_footer;
+}
+
+void Document::clearHeader() { m_header.reset(); }
+void Document::clearFooter() { m_footer.reset(); }
+
 Document& Document::addTOC(const std::string& levels, const std::string& title) {
     if (!title.empty()) {
         Element ht;
@@ -309,7 +340,7 @@ void Document::buildDocumentXml(std::string& xml) {
                             const std::string& userCaption) -> std::string {
         std::string s;
         s += "<w:p>"
-             "<w:pPr><w:jc w:val=\"center\"/></w:pPr>"
+             "<w:pPr><w:jc w:val=\"center\"/><w:ind w:firstLine=\"0\"/></w:pPr>"
              "<w:r><w:rPr><w:b/></w:rPr>"
              "<w:t xml:space=\"preserve\">" + xmlEscape(prefix + numText) + "</w:t>"
              "</w:r>";
@@ -379,9 +410,12 @@ void Document::buildDocumentXml(std::string& xml) {
                 std::string cy = std::to_string(imgSize.heightEmu);
 
                 xml += "<w:p>";
+                xml += "<w:pPr>";
                 if (img->hasAlignment()) {
-                    xml += "<w:pPr><w:jc w:val=\"" + alignmentToString(img->alignment()) + "\"/></w:pPr>";
+                    xml += "<w:jc w:val=\"" + alignmentToString(img->alignment()) + "\"/>";
                 }
+                xml += "<w:ind w:firstLine=\"0\"/>";  // images never first-line indent
+                xml += "</w:pPr>";
                 xml += "<w:r>"
                        "<w:drawing>"
                        "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
@@ -475,6 +509,12 @@ void Document::buildDocumentXml(std::string& xml) {
 
     // Final section properties
     xml += "<w:sectPr>";
+    if (m_header) {
+        xml += "<w:headerReference w:type=\"default\" r:id=\"rIdHeader\"/>";
+    }
+    if (m_footer) {
+        xml += "<w:footerReference w:type=\"default\" r:id=\"rIdFooter\"/>";
+    }
     xml += "<w:pgSz w:w=\"" + std::to_string(w)
          + "\" w:h=\"" + std::to_string(h) + "\"";
     if (m_page.orientation == Orientation::Landscape) {
@@ -485,7 +525,7 @@ void Document::buildDocumentXml(std::string& xml) {
          + "\" w:right=\"" + std::to_string(mm(m_page.margins.right))
          + "\" w:bottom=\"" + std::to_string(mm(m_page.margins.bottom))
          + "\" w:left=\"" + std::to_string(mm(m_page.margins.left))
-         + "\" w:header=\"0\" w:footer=\"0\" w:gutter=\"0\"/>";
+         + "\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>";
     xml += "</w:sectPr>";
 
     xml += "</w:body></w:document>";
@@ -532,6 +572,18 @@ std::string Document::buildRelationshipsXml() {
     xml += "<Relationship Id=\"rIdNum\" "
            "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering\" "
            "Target=\"numbering.xml\"/>";
+
+    // Header / footer relationships
+    if (m_header) {
+        xml += "<Relationship Id=\"rIdHeader\" "
+               "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/header\" "
+               "Target=\"header1.xml\"/>";
+    }
+    if (m_footer) {
+        xml += "<Relationship Id=\"rIdFooter\" "
+               "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer\" "
+               "Target=\"footer1.xml\"/>";
+    }
 
     xml += "</Relationships>";
     return xml;
@@ -653,6 +705,26 @@ std::string Document::buildStylesXml() {
     return xml;
 }
 
+std::string Document::buildHeaderXml() {
+    std::string xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        "<w:hdr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""
+        " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\""
+        " xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">";
+    xml += m_header ? m_header->toXml() : std::string("<w:p/>");
+    xml += "</w:hdr>";
+    return xml;
+}
+
+std::string Document::buildFooterXml() {
+    std::string xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        "<w:ftr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""
+        " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\""
+        " xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">";
+    xml += m_footer ? m_footer->toXml() : std::string("<w:p/>");
+    xml += "</w:ftr>";
+    return xml;
+}
+
 std::string Document::buildHeadingNumberingXml() {
     std::string xml;
     xml += "<w:abstractNum w:abstractNumId=\"10\">"
@@ -766,6 +838,15 @@ std::string Document::buildContentTypesXml() {
           "<Override PartName=\"/word/styles.xml\" "
           "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>";
 
+    if (m_header) {
+        xml += "<Override PartName=\"/word/header1.xml\" "
+               "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/>";
+    }
+    if (m_footer) {
+        xml += "<Override PartName=\"/word/footer1.xml\" "
+               "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>";
+    }
+
     // Image types (document-level)
     for (const auto& img : m_images) {
         if (img->skipped()) continue;
@@ -876,6 +957,8 @@ bool Document::save(const std::string& filepath) {
         zip.addEntry("word/_rels/document.xml.rels", relsXml);
         zip.addEntry("word/styles.xml", buildStylesXml());
         zip.addEntry("word/numbering.xml", buildNumberingXml());
+        if (m_header) zip.addEntry("word/header1.xml", buildHeaderXml());
+        if (m_footer) zip.addEntry("word/footer1.xml", buildFooterXml());
 
         // Add document-level images
         for (const auto& img : m_images) {
