@@ -1,0 +1,119 @@
+#pragma once
+
+#include "Paragraph.hpp"
+#include "Table.hpp"
+#include "Image.hpp"
+#include "Equation.hpp"
+#include "Types.hpp"
+#include <string>
+#include <vector>
+#include <memory>
+
+namespace xword {
+
+class BulletList {
+public:
+    BulletList(ListType type = ListType::Bullet);
+
+    BulletList& addItem(const std::string& text);
+    BulletList& setLevel(int level);
+    BulletList& setNumId(int id);
+
+    std::string toXml() const;
+    int numId() const { return m_numId; }
+
+private:
+    ListType m_type;
+    int m_level = 0;
+    int m_numId = 0; // assigned by Document, 0 = use default
+    std::vector<std::string> m_items;
+};
+
+class Document {
+public:
+    Document();
+    ~Document();
+
+    Document(const Document&) = delete;
+    Document& operator=(const Document&) = delete;
+
+    // ---- Page settings ----
+    Document& setPage(const Page& page);
+    // Set default first-line indent for body paragraphs (chars, default fontSize 12pt)
+    Document& setDefaultParagraphIndent(double chars = 2, int fontSizePt = 12);
+
+    // ---- Heading ----
+    Document& addHeading(const std::string& text, int level); // level 1-6
+    Document& addHeadingNoNum(const std::string& text, int level); // heading without number
+    Document& setHeadingStyle(int level, const HeadingStyle& style);
+    Document& enableHeadingNumbering();
+    Document& disableHeadingNumbering();
+    Document& setHeadingNumFormat(HeadingNumFormat fmt);
+
+    // ---- TOC ----
+    Document& addTOC(const std::string& levels = "1-3", const std::string& title = "");
+
+    // ---- Paragraph ----
+    Paragraph& addParagraph(const std::string& text = "");
+
+    // ---- Image ----
+    Image& addImage(const std::string& filepath);
+
+    // ---- Table ----
+    Table& addTable(int rows, int cols);
+
+    // ---- Lists ----
+    BulletList& addBulletList();
+    BulletList& addOrderedList();
+
+    // ---- Equations ----
+    Equation& addEquation(const std::string& latex);
+    Equation& addDisplayEquation(const std::string& latex);
+
+    // ---- Save ----
+    bool save(const std::string& filepath);
+
+private:
+    enum class ElementType { Heading, Paragraph, Image, Table, BulletList, Equation, TOC };
+
+    struct Element {
+        ElementType type;
+        int headingLevel = 0;
+        std::string text;
+        std::string extra;     // for TOC: level range
+        bool noNumbering = false;
+        union Data {
+            Paragraph* paragraph = nullptr;
+            Image* image;
+            Table* table;
+            BulletList* bulletList;
+            Equation* equation;
+            void* ptr;
+            Data() {}
+        } data;
+    };
+
+    void buildDocumentXml(std::string& xml);
+    std::string buildRelationshipsXml();
+    std::string buildContentTypesXml();
+    std::string buildNumberingXml();
+    std::string buildStylesXml();
+    std::string buildHeadingNumberingXml();
+
+    Page m_page;
+    std::vector<std::unique_ptr<Paragraph>> m_paragraphs;
+    std::vector<std::unique_ptr<Image>> m_images;
+    std::vector<std::unique_ptr<Table>> m_tables;
+    std::vector<std::unique_ptr<BulletList>> m_lists;
+    std::vector<std::unique_ptr<Equation>> m_equations;
+
+    std::vector<Element> m_elements;
+
+    HeadingStyle m_headingStyles[6];
+    bool m_headingNumbering = false;
+    HeadingNumFormat m_headingNumFormat = HeadingNumFormat::Decimal;
+    int m_nextOrderedListId = 3;
+    int m_defaultIndent = 480; // twips, 0 = no default indent (480 ≈ 2 chars at 12pt)
+};
+
+} // namespace xword
