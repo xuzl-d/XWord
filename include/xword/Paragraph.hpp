@@ -27,8 +27,11 @@ public:
 
     // Set first-line indent (twips, 1pt = 20 twips, ~480 = 2 chars at 12pt)
     Paragraph& setFirstLineIndent(int twips);
-    // Set first-line indent by characters (fontSizePt = current font size)
     Paragraph& setFirstLineIndentChars(double chars, int fontSizePt = 12);
+
+    // Set paragraph spacing (twips, 1pt = 20 twips)
+    Paragraph& setSpacingAfter(int twips);
+    Paragraph& setSpacingBefore(int twips);
 
     // Internal: build XML for this paragraph
     std::string toXml() const;
@@ -44,7 +47,9 @@ private:
     std::vector<RunEntry> m_runs;
     Alignment m_alignment = Alignment::Left;
     bool m_hasAlignment = false;
-    int m_firstLineIndent = -1; // twips, -1 = inherit style default, 0 = no indent
+    int m_firstLineIndent = -1;
+    int m_spacingAfter = -1;  // -1 = inherit
+    int m_spacingBefore = -1; // -1 = inherit
 };
 
 } // namespace xword

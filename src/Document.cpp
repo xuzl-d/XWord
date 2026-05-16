@@ -431,6 +431,7 @@ std::string Document::buildStylesXml() {
         xml += "<w:basedOn w:val=\"Normal\"/>";
         xml += "<w:pPr>";
         xml += "<w:outlineLvl w:val=\"" + std::to_string(level - 1) + "\"/>";
+        xml += "<w:ind w:firstLine=\"0\"/>"; // override Normal indent
 
         // Spacing (twips: 1pt = 20 twips)
         if (before > 0) xml += "<w:spacing w:before=\"" + std::to_string(static_cast<int>(before * 20)) + "\"/>";
@@ -494,7 +495,28 @@ std::string Document::buildStylesXml() {
           "<w:next w:val=\"Normal\"/>"
           "<w:pPr>"
           "<w:outlineLvl w:val=\"9\"/>"
+          "<w:ind w:firstLine=\"0\"/>"
           "</w:pPr>"
+          "</w:style>"
+
+          // TOC level styles (used by Word when generating TOC entries)
+          "<w:style w:type=\"paragraph\" w:styleId=\"TOC1\">"
+          "<w:name w:val=\"TOC 1\"/>"
+          "<w:basedOn w:val=\"Normal\"/>"
+          "<w:pPr><w:ind w:firstLine=\"0\" w:left=\"0\"/></w:pPr>"
+          "<w:rPr><w:b/></w:rPr>"
+          "</w:style>"
+
+          "<w:style w:type=\"paragraph\" w:styleId=\"TOC2\">"
+          "<w:name w:val=\"TOC 2\"/>"
+          "<w:basedOn w:val=\"Normal\"/>"
+          "<w:pPr><w:ind w:firstLine=\"0\" w:left=\"240\"/></w:pPr>"
+          "</w:style>"
+
+          "<w:style w:type=\"paragraph\" w:styleId=\"TOC3\">"
+          "<w:name w:val=\"TOC 3\"/>"
+          "<w:basedOn w:val=\"Normal\"/>"
+          "<w:pPr><w:ind w:firstLine=\"0\" w:left=\"480\"/></w:pPr>"
           "</w:style>"
 
           + makeHeadingStyle(1, 0) + makeHeadingStyle(2, 1)

@@ -10,6 +10,9 @@ Paragraph& Cell::addParagraph(const std::string& text) {
     if (!text.empty()) {
         p->addRun(text);
     }
+    // Table cells: no indent, no extra spacing
+    p->setFirstLineIndent(0);
+    p->setSpacingAfter(0);
     m_paragraphs.push_back(std::move(p));
     return *m_paragraphs.back();
 }
@@ -17,6 +20,8 @@ Paragraph& Cell::addParagraph(const std::string& text) {
 Paragraph& Cell::addEquation(const std::string& latex) {
     auto p = std::make_unique<Paragraph>();
     p->addEquation(latex);
+    p->setFirstLineIndent(0);
+    p->setSpacingAfter(0);
     m_paragraphs.push_back(std::move(p));
     return *m_paragraphs.back();
 }

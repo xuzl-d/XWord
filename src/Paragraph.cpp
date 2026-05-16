@@ -30,8 +30,17 @@ Paragraph& Paragraph::setFirstLineIndent(int twips) {
 }
 
 Paragraph& Paragraph::setFirstLineIndentChars(double chars, int fontSizePt) {
-    // 1 char width ≈ fontSizePt * 20 twips
     m_firstLineIndent = static_cast<int>(chars * fontSizePt * 20);
+    return *this;
+}
+
+Paragraph& Paragraph::setSpacingAfter(int twips) {
+    m_spacingAfter = twips;
+    return *this;
+}
+
+Paragraph& Paragraph::setSpacingBefore(int twips) {
+    m_spacingBefore = twips;
     return *this;
 }
 
@@ -48,6 +57,12 @@ std::string Paragraph::toXml() const {
     }
     if (m_firstLineIndent >= 0) {
         xml += "<w:ind w:firstLine=\"" + std::to_string(m_firstLineIndent) + "\"/>";
+    }
+    if (m_spacingAfter >= 0 || m_spacingBefore >= 0) {
+        xml += "<w:spacing";
+        if (m_spacingAfter >= 0)  xml += " w:after=\"" + std::to_string(m_spacingAfter) + "\"";
+        if (m_spacingBefore >= 0) xml += " w:before=\"" + std::to_string(m_spacingBefore) + "\"";
+        xml += "/>";
     }
     xml += "</w:pPr>";
 
