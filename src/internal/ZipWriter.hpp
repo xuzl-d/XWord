@@ -1,6 +1,5 @@
 #pragma once
 
-#include "pugixml.hpp"
 #include <string>
 #include <vector>
 #include <fstream>
@@ -24,14 +23,6 @@ private:
     struct Impl;
     Impl* m_impl;
     std::string m_filepath;
-};
-
-class XmlStringWriter : public pugi::xml_writer {
-public:
-    std::string result;
-    void write(const void* data, size_t size) override {
-        result.append(static_cast<const char*>(data), size);
-    }
 };
 
 // Escape XML special chars in text content

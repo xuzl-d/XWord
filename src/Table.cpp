@@ -1,5 +1,5 @@
 #include "xword/Table.hpp"
-#include "xword/internal/ZipWriter.hpp"
+#include "internal/ZipWriter.hpp"
 
 namespace xword {
 
@@ -221,7 +221,10 @@ std::string Table::toXml() const {
             xml += "</w:tcPr>";
 
             // Cell content: images first, then paragraphs
+            int liveImages = 0;
             for (const auto& img : cell.images()) {
+                if (img.skipped) continue;
+                ++liveImages;
                 xml += "<w:p>" + buildImageXml(img) + "</w:p>";
                 // Caption below image
                 if (!img.caption.empty()) {
@@ -236,8 +239,8 @@ std::string Table::toXml() const {
             for (const auto& p : cell.paragraphs()) {
                 xml += p->toXml();
             }
-            // Empty cell - add empty paragraph
-            if (cell.paragraphs().empty() && cell.images().empty()) {
+            // Cells must contain at least one paragraph for valid OOXML.
+            if (cell.paragraphs().empty() && liveImages == 0) {
                 xml += "<w:p/>";
             }
             xml += "</w:tc>";

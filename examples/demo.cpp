@@ -225,6 +225,8 @@ int main() {
 
     // 第2章的图与表，验证章内编号重置（图2-1、表2-1）
     doc.addImage(u8"平面图.emf").setCaption(u8"第二章首图");
+    // 故意添加一个不存在的图片：库会跳过它，文档仍合法可打开
+    doc.addImage("nonexistent_xyz.png").setCaption("缺失图片测试");
     auto& tableCh2 = doc.addTable(2, 2);
     tableCh2.setStyle(TableStyle::Grid).setCaption(u8"第二章演示表");
     tableCh2.cell(0, 0).addParagraph("A");

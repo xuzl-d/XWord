@@ -1,5 +1,6 @@
 #include "xword/Paragraph.hpp"
 #include "xword/Equation.hpp"
+#include "internal/ZipWriter.hpp"
 
 namespace xword {
 

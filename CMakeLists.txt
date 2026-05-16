@@ -5,7 +5,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# ---- Third-party: miniz ----
+# Place runtime DLL next to test/demo .exe so they can run in-tree.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/$<CONFIG>)
+
+option(XWORD_BUILD_EXAMPLES "Build examples" ON)
+option(XWORD_BUILD_TESTS    "Build tests"    ON)
+
+# ---- Third-party: miniz (linked statically into the DLL, not exposed) ----
 add_library(miniz STATIC
     thirdparty/miniz/miniz.c
     thirdparty/miniz/miniz_zip.c
@@ -13,15 +19,10 @@ add_library(miniz STATIC
     thirdparty/miniz/miniz_tinfl.c
 )
 target_include_directories(miniz PUBLIC thirdparty/miniz)
+set_target_properties(miniz PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-# ---- Third-party: pugixml ----
-add_library(pugixml STATIC
-    thirdparty/pugixml/pugixml.cpp
-)
-target_include_directories(pugixml PUBLIC thirdparty/pugixml)
-
-# ---- XWord library ----
-add_library(xword STATIC
+# ---- XWord shared library ----
+add_library(xword SHARED
     src/Document.cpp
     src/Paragraph.cpp
     src/Table.cpp
@@ -29,24 +30,51 @@ add_library(xword STATIC
     src/Equation.cpp
     src/internal/ZipWriter.cpp
 )
-target_include_directories(xword PUBLIC include)
-target_link_libraries(xword PUBLIC pugixml miniz)
+target_include_directories(xword
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_compile_definitions(xword PRIVATE XWORD_BUILDING)
+target_link_libraries(xword PRIVATE miniz)
+set_target_properties(xword PROPERTIES
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+    DEBUG_POSTFIX d
+)
 if(MSVC)
-    target_compile_options(xword PRIVATE /utf-8 /wd4996)
+    target_compile_options(xword PRIVATE /utf-8 /wd4996 /wd4251)
 endif()
 
 # ---- Examples ----
-add_executable(xword_demo examples/demo.cpp)
-target_link_libraries(xword_demo xword)
-if(MSVC)
-    target_compile_options(xword_demo PRIVATE /utf-8 /wd4996)
+if(XWORD_BUILD_EXAMPLES)
+    add_executable(xword_demo examples/demo.cpp)
+    target_link_libraries(xword_demo PRIVATE xword)
+    if(MSVC)
+        target_compile_options(xword_demo PRIVATE /utf-8 /wd4996)
+    endif()
 endif()
 
 # ---- Tests ----
-enable_testing()
-add_executable(xword_test tests/test_basic.cpp)
-target_link_libraries(xword_test xword)
-if(MSVC)
-    target_compile_options(xword_test PRIVATE /utf-8 /wd4996)
+if(XWORD_BUILD_TESTS)
+    enable_testing()
+    add_executable(xword_test tests/test_basic.cpp)
+    target_link_libraries(xword_test PRIVATE xword)
+    if(MSVC)
+        target_compile_options(xword_test PRIVATE /utf-8 /wd4996)
+    endif()
+    add_test(NAME xword_test COMMAND xword_test)
 endif()
-add_test(NAME xword_test COMMAND xword_test)
+
+# ---- Install (clean redistributable layout) ----
+include(GNUInstallDirs)
+install(TARGETS xword
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+install(DIRECTORY include/xword
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hpp"
+)

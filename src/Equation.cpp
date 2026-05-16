@@ -1,5 +1,5 @@
 #include "xword/Equation.hpp"
-#include "xword/internal/ZipWriter.hpp"
+#include "internal/ZipWriter.hpp"
 #include <cctype>
 #include <stdexcept>
 #include <unordered_map>

@@ -1,4 +1,4 @@
-#include "xword/internal/ZipWriter.hpp"
+#include "internal/ZipWriter.hpp"
 #include "miniz.h"
 #include <fstream>
 #include <cstring>

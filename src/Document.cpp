@@ -1,5 +1,5 @@
 ﻿#include "xword/Document.hpp"
-#include "xword/internal/ZipWriter.hpp"
+#include "internal/ZipWriter.hpp"
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -361,6 +361,7 @@ void Document::buildDocumentXml(std::string& xml) {
             }
             case ElementType::Image: {
                 Image* img = elem.data.image;
+                if (img->skipped()) break;  // missing source file → omit entirely
                 // Find this image's index in m_images
                 int idx = -1;
                 for (size_t k = 0; k < m_images.size(); ++k) {
@@ -497,6 +498,7 @@ std::string Document::buildRelationshipsXml() {
 
     // Image relationships (document-level)
     for (size_t i = 0; i < m_images.size(); ++i) {
+        if (m_images[i]->skipped()) continue;
         std::string rId = "rId_img_" + std::to_string(i + 1);
         xml += "<Relationship Id=\"" + rId + "\" "
                "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" "
@@ -508,6 +510,7 @@ std::string Document::buildRelationshipsXml() {
         for (int r = 0; r < table->rows(); ++r) {
             for (int c = 0; c < table->cols(); ++c) {
                 for (const auto& cimg : table->cell(r, c).images()) {
+                    if (cimg.skipped) continue;
                     if (!cimg.rId.empty()) {
                         namespace fs = std::filesystem;
                         std::string mediaPath = "media/" + fs::u8path(cimg.filepath).filename().u8string();
@@ -765,6 +768,7 @@ std::string Document::buildContentTypesXml() {
 
     // Image types (document-level)
     for (const auto& img : m_images) {
+        if (img->skipped()) continue;
         namespace fs = std::filesystem;
         std::string ext = fs::u8path(img->filepath()).extension().u8string();
         if (!ext.empty()) ext = ext.substr(1);
@@ -777,6 +781,7 @@ std::string Document::buildContentTypesXml() {
         for (int r = 0; r < table->rows(); ++r) {
             for (int c = 0; c < table->cols(); ++c) {
                 for (const auto& cimg : table->cell(r, c).images()) {
+                    if (cimg.skipped) continue;
                     if (!cimg.rId.empty()) {
                         namespace fs = std::filesystem;
                         std::string mediaPath = "media/" + fs::u8path(cimg.filepath).filename().u8string();
@@ -796,16 +801,52 @@ std::string Document::buildContentTypesXml() {
 
 bool Document::save(const std::string& filepath) {
     try {
+        namespace fs = std::filesystem;
+
+        // Probe each image source file. Missing/unreadable files are marked
+        // skipped and dropped from the docx so the resulting file is still
+        // a valid OPC package that Word can open.
+        auto probe = [](const std::string& p) {
+            if (p.empty()) return false;
+            std::error_code ec;
+            return fs::is_regular_file(fs::u8path(p), ec);
+        };
+        for (auto& img : m_images) {
+            if (!probe(img->filepath())) {
+                img->setSkipped(true);
+                std::cerr << "[xword] warning: skipping missing image '"
+                          << img->filepath() << "'\n";
+            }
+        }
+        for (auto& table : m_tables) {
+            for (int r = 0; r < table->rows(); ++r) {
+                for (int c = 0; c < table->cols(); ++c) {
+                    for (auto& cimg : table->cell(r, c).images()) {
+                        if (!probe(cimg.filepath)) {
+                            cimg.skipped = true;
+                            std::cerr << "[xword] warning: skipping missing image '"
+                                      << cimg.filepath << "'\n";
+                        }
+                    }
+                }
+            }
+        }
+
         // Collect and register cell images from all tables
         std::vector<CellImage*> cellImages;
         for (auto& table : m_tables) {
             table->collectCellImages(cellImages);
         }
 
-        // Assign rIds to cell images
+        // Assign rIds to cell images (skip dropped ones)
         int imgIndex = static_cast<int>(m_images.size());
-        for (size_t i = 0; i < cellImages.size(); ++i) {
-            cellImages[i]->rId = "rId_img_" + std::to_string(imgIndex + static_cast<int>(i) + 1);
+        int cellRidCounter = 0;
+        for (auto* cimg : cellImages) {
+            if (cimg->skipped) {
+                cimg->rId.clear();
+                continue;
+            }
+            cimg->rId = "rId_img_" + std::to_string(imgIndex + (++cellRidCounter));
         }
 
         ZipWriter zip(filepath);
@@ -838,6 +879,7 @@ bool Document::save(const std::string& filepath) {
 
         // Add document-level images
         for (const auto& img : m_images) {
+            if (img->skipped()) continue;
             if (!zip.addFileEntry("word/" + img->mediaPath(), img->filepath())) {
                 return false;
             }
@@ -845,6 +887,7 @@ bool Document::save(const std::string& filepath) {
 
         // Add cell images from tables
         for (auto* cimg : cellImages) {
+            if (cimg->skipped) continue;
             namespace fs = std::filesystem;
             std::string mediaPath = "media/" + fs::u8path(cimg->filepath).filename().u8string();
             if (!zip.addFileEntry("word/" + mediaPath, cimg->filepath)) {

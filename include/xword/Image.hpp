@@ -38,6 +38,11 @@ public:
     std::string rId() const { return m_rid; }
     void setRId(const std::string& rid) { m_rid = rid; }
 
+    // Skipped images (file missing/unreadable) are dropped from the docx
+    // entirely so the document remains valid. Set during Document::save().
+    bool skipped() const { return m_skipped; }
+    void setSkipped(bool v) { m_skipped = v; }
+
 private:
     std::string m_filepath;
     int m_width = 0;
@@ -47,6 +52,7 @@ private:
     std::string m_rid;
     std::string m_mediaName;  // ASCII-only filename used inside the docx
     std::string m_caption;
+    bool m_skipped = false;
 };
 
 } // namespace xword

@@ -2,7 +2,6 @@
 
 #include "Run.hpp"
 #include "Types.hpp"
-#include "internal/ZipWriter.hpp"
 #include <string>
 #include <vector>
 #include <memory>

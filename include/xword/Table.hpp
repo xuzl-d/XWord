@@ -15,6 +15,7 @@ struct CellImage {
     int height = 0;
     std::string rId;      // assigned by Document during save
     std::string caption;
+    bool skipped = false; // true when source file is missing/unreadable
 
     CellImage& setCaption(const std::string& cap) { caption = cap; return *this; }
 };
