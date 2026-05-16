@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <filesystem>
 
 namespace xword {
 
@@ -27,9 +28,18 @@ public:
     // Convenience: add inline equation directly
     Paragraph& addEquation(const std::string& latex);
 
-    // Add an image to this cell
+    // Add an image to this cell.
+    // std::string is interpreted as UTF-8; use fs::path or std::wstring for native paths.
     CellImage& addImage(const std::string& filepath);
     CellImage& addImage(const std::string& filepath, int width, int height);
+    CellImage& addImage(const char* filepath) { return addImage(std::string(filepath)); }
+    CellImage& addImage(const char* filepath, int width, int height) { return addImage(std::string(filepath), width, height); }
+    CellImage& addImage(const std::filesystem::path& filepath);
+    CellImage& addImage(const std::filesystem::path& filepath, int width, int height);
+    CellImage& addImage(const std::wstring& filepath);
+    CellImage& addImage(const std::wstring& filepath, int width, int height);
+    CellImage& addImage(const wchar_t* filepath) { return addImage(std::wstring(filepath)); }
+    CellImage& addImage(const wchar_t* filepath, int width, int height) { return addImage(std::wstring(filepath), width, height); }
 
     void setVMerge(const std::string& v) { m_vMerge = v; }
     void setGridSpan(int span) { m_gridSpan = span; }
@@ -56,6 +66,8 @@ public:
 
     Table& setHeaderRow(int row);
     Table& setStyle(TableStyle style);
+    Table& setCaption(const std::string& cap) { m_caption = cap; return *this; }
+    const std::string& caption() const { return m_caption; }
 
     Cell& cell(int row, int col);
     const Cell& cell(int row, int col) const;
@@ -76,6 +88,7 @@ private:
     int m_cols;
     int m_headerRow = -1;
     TableStyle m_style = TableStyle::None;
+    std::string m_caption;
     std::vector<std::vector<Cell>> m_cells;
 };
 

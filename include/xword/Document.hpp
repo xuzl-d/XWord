@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <filesystem>
 
 namespace xword {
 
@@ -57,10 +58,21 @@ public:
     Paragraph& addParagraph(const std::string& text = "");
 
     // ---- Image ----
+    // std::string is interpreted as UTF-8; use fs::path or std::wstring for native paths.
     Image& addImage(const std::string& filepath);
+    Image& addImage(const char* filepath) { return addImage(std::string(filepath)); }
+    Image& addImage(const std::filesystem::path& filepath);
+    Image& addImage(const std::wstring& filepath);
+    Image& addImage(const wchar_t* filepath) { return addImage(std::wstring(filepath)); }
+    Document& enableImageNumbering(const std::string& prefix = "图",
+                                   CaptionNumStyle style = CaptionNumStyle::Sequential);
+    Document& disableImageNumbering();
 
     // ---- Table ----
     Table& addTable(int rows, int cols);
+    Document& enableTableNumbering(const std::string& prefix = "表",
+                                   CaptionNumStyle style = CaptionNumStyle::Sequential);
+    Document& disableTableNumbering();
 
     // ---- Lists ----
     BulletList& addBulletList();
@@ -113,7 +125,13 @@ private:
     bool m_headingNumbering = false;
     HeadingNumFormat m_headingNumFormat = HeadingNumFormat::Decimal;
     int m_nextOrderedListId = 3;
-    int m_defaultIndent = 480; // twips, 0 = no default indent (480 ≈ 2 chars at 12pt)
+    int m_defaultIndent = 480;
+    bool m_imageNumbering = false;
+    std::string m_imageNumPrefix = "图";
+    CaptionNumStyle m_imageNumStyle = CaptionNumStyle::Sequential;
+    bool m_tableNumbering = false;
+    std::string m_tableNumPrefix = "表";
+    CaptionNumStyle m_tableNumStyle = CaptionNumStyle::Sequential;
 };
 
 } // namespace xword

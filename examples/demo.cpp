@@ -1,5 +1,7 @@
 #include "xword/xword.hpp"
 #include <iostream>
+#include <filesystem>
+#include <string>
 
 int main() {
     using namespace xword;
@@ -28,6 +30,10 @@ int main() {
     // ---- Enable heading auto-numbering with chapter format ----
     doc.enableHeadingNumbering();
     doc.setHeadingNumFormat(HeadingNumFormat::Chapter);  // 第1章, 1.1, 1.1.1
+
+    // ---- Caption numbering: by chapter (图1-1, 图1-2, 图2-1, 表1-1, ...) ----
+    doc.enableImageNumbering("图", CaptionNumStyle::ByChapter);
+    doc.enableTableNumbering("表", CaptionNumStyle::ByChapter);
 
     // ---- TOC ----
     doc.addTOC("1-3", "目录");
@@ -67,7 +73,7 @@ int main() {
     doc.addParagraph("下面是一个带边框的学生成绩表：");
 
     auto& table = doc.addTable(5, 4);
-    table.setHeaderRow(0).setStyle(TableStyle::Grid);
+    table.setHeaderRow(0).setStyle(TableStyle::Grid).setCaption("学生成绩表");
 
     table.cell(0, 0).addParagraph("姓名");
     table.cell(0, 1).addParagraph("语文");
@@ -101,7 +107,7 @@ int main() {
     doc.addHeading("合并单元格表格", 2);
 
     auto& table2 = doc.addTable(3, 3);
-    table2.setStyle(TableStyle::Grid);
+    table2.setStyle(TableStyle::Grid).setCaption("合并示例");
 
     // Merge first row entirely
     table2.mergeCells(0, 0, 0, 2);
@@ -119,7 +125,7 @@ int main() {
     doc.addHeading("表格中的公式", 3);
 
     auto& table3 = doc.addTable(3, 2);
-    table3.setStyle(TableStyle::Grid).setHeaderRow(0);
+    table3.setStyle(TableStyle::Grid).setHeaderRow(0).setCaption("常见公式");
 
     table3.cell(0, 0).addParagraph("名称");
     table3.cell(0, 1).addParagraph("公式");
@@ -132,7 +138,7 @@ int main() {
 
     doc.addParagraph("表格中的公式可以和文字混排：");
     auto& table4 = doc.addTable(2, 2);
-    table4.setStyle(TableStyle::Grid);
+    table4.setStyle(TableStyle::Grid).setCaption("公式混排");
     table4.cell(0, 0).addParagraph()
         .addRun("当 ")
         .addEquation("\\Delta = b^2 - 4ac > 0")
@@ -157,6 +163,16 @@ int main() {
         .addItem("安装依赖库")
         .addItem("编译项目")
         .addItem("运行测试");
+
+    doc.addHeading("插图", 2);
+    doc.addParagraph("插入图片测试（按章节自动编号：图1-1、图1-2 ...）：");
+    doc.addImage("Board001.png")
+       .setCaption("面板示意图")
+       .setAlignment(Alignment::Center);
+
+    doc.addImage("test.emf")
+       .setCaption("矢量示意图 （自动适应页面宽度）")
+       .setAlignment(Alignment::Center);
 
     // ---- Heading 5: Equations ----
     doc.addHeading("LaTeX 公式", 2);
@@ -202,6 +218,22 @@ int main() {
     doc.addParagraph("带 accent 的符号：");
     doc.addEquation("\\bar{x} = \\frac{1}{n}\\sum_{i=1}^{n} x_i, \\quad \\hat{y} = \\vec{a} \\cdot \\vec{b}");
 
+    //第2章
+    doc.addHeading("章节测试", 1);
+    doc.addHeading("钢铁是怎么练成的", 2);
+    doc.addParagraph("我也不知道");
+
+    // 第2章的图与表，验证章内编号重置（图2-1、表2-1）
+    doc.addImage(u8"平面图.emf").setCaption(u8"第二章首图");
+    auto& tableCh2 = doc.addTable(2, 2);
+    tableCh2.setStyle(TableStyle::Grid).setCaption(u8"第二章演示表");
+    tableCh2.cell(0, 0).addParagraph("A");
+    tableCh2.cell(0, 1).addParagraph("B");
+    tableCh2.cell(1, 0).addParagraph("C");
+    tableCh2.cell(1, 1).addParagraph("D");
+
+    doc.addHeading("疯狂星期四", 2);
+    doc.addHeading("买一送一", 3);
     // ---- Save ----
     std::string outputPath = "demo_output.docx";
     if (doc.save(outputPath)) {

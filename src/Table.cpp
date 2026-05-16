@@ -35,6 +35,22 @@ CellImage& Cell::addImage(const std::string& filepath, int width, int height) {
     return m_images.back();
 }
 
+CellImage& Cell::addImage(const std::filesystem::path& filepath) {
+    return addImage(filepath.u8string(), 0, 0);
+}
+
+CellImage& Cell::addImage(const std::filesystem::path& filepath, int width, int height) {
+    return addImage(filepath.u8string(), width, height);
+}
+
+CellImage& Cell::addImage(const std::wstring& filepath) {
+    return addImage(std::filesystem::path(filepath));
+}
+
+CellImage& Cell::addImage(const std::wstring& filepath, int width, int height) {
+    return addImage(std::filesystem::path(filepath), width, height);
+}
+
 // ---- Table ----
 
 Table::Table(int rows, int cols) : m_rows(rows), m_cols(cols) {
@@ -121,18 +137,23 @@ std::string Table::toXml() const {
     using namespace internal;
 
     auto buildImageXml = [](const CellImage& img) -> std::string {
-        int wEmu = img.width > 0 ? img.width * 9525 : 1905000;   // default 200px
-        int hEmu = img.height > 0 ? img.height * 9525 : 1428750;  // default 150px
+        auto sz = internal::computeImageSize(img.filepath, img.width, img.height);
+        std::string cx = std::to_string(sz.widthEmu);
+        std::string cy = std::to_string(sz.heightEmu);
+        // Use a unique-ish id from rId hash; safe non-zero value
+        std::string idStr = img.rId.empty() ? "1" : std::to_string(std::hash<std::string>{}(img.rId) % 1000000 + 1);
         return "<w:r>"
                "<w:drawing>"
                "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
-               "<wp:extent cx=\"" + std::to_string(wEmu) + "\" cy=\"" + std::to_string(hEmu) + "\"/>"
-               "<wp:docPr id=\"1\" name=\"Picture\"/>"
+               "<wp:extent cx=\"" + cx + "\" cy=\"" + cy + "\"/>"
+               "<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>"
+               "<wp:docPr id=\"" + idStr + "\" name=\"Picture " + idStr + "\"/>"
+               "<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" noChangeAspect=\"1\"/></wp:cNvGraphicFramePr>"
                "<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">"
                "<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
                "<pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
                "<pic:nvPicPr>"
-               "<pic:cNvPr id=\"0\" name=\"Picture\"/>"
+               "<pic:cNvPr id=\"" + idStr + "\" name=\"Picture " + idStr + "\"/>"
                "<pic:cNvPicPr/>"
                "</pic:nvPicPr>"
                "<pic:blipFill>"
@@ -142,7 +163,7 @@ std::string Table::toXml() const {
                "<pic:spPr>"
                "<a:xfrm>"
                "<a:off x=\"0\" y=\"0\"/>"
-               "<a:ext cx=\"" + std::to_string(wEmu) + "\" cy=\"" + std::to_string(hEmu) + "\"/>"
+               "<a:ext cx=\"" + cx + "\" cy=\"" + cy + "\"/>"
                "</a:xfrm>"
                "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
                "</pic:spPr>"

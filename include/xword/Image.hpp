@@ -2,12 +2,19 @@
 
 #include "Types.hpp"
 #include <string>
+#include <filesystem>
 
 namespace xword {
 
 class Image {
 public:
+    // Construct from a UTF-8 path string, an fs::path, or a wide-char path.
+    // On Windows, std::string is assumed to be UTF-8 (the project compiles with /utf-8).
     Image(const std::string& filepath);
+    Image(const char* filepath) : Image(std::string(filepath)) {}
+    Image(const std::filesystem::path& filepath);
+    Image(const std::wstring& filepath);
+    Image(const wchar_t* filepath) : Image(std::wstring(filepath)) {}
 
     Image& setSize(int width, int height);
     Image& setAlignment(Alignment align);
@@ -20,8 +27,12 @@ public:
     bool hasAlignment() const { return m_hasAlignment; }
     const std::string& caption() const { return m_caption; }
 
-    // Get relative path in the docx (word/media/xxx)
+    // Get relative path in the docx (word/media/xxx).
+    // For non-ASCII source filenames this is overridden by Document with a
+    // sanitised ASCII name (OPC part names must be valid URI segments).
     std::string mediaPath() const;
+    void setMediaName(const std::string& name) { m_mediaName = name; }
+    const std::string& mediaName() const { return m_mediaName; }
 
     // Get the relationship ID placeholder
     std::string rId() const { return m_rid; }
@@ -34,6 +45,7 @@ private:
     Alignment m_alignment = Alignment::Left;
     bool m_hasAlignment = false;
     std::string m_rid;
+    std::string m_mediaName;  // ASCII-only filename used inside the docx
     std::string m_caption;
 };
 

@@ -37,6 +37,11 @@ enum class HeadingNumFormat {
     Chapter,     // 第1章, 1.1, 1.1.1
 };
 
+enum class CaptionNumStyle {
+    Sequential,  // 1, 2, 3, ...
+    ByChapter,   // 1-1, 1-2, 2-1, ... (chapter from H1)
+};
+
 struct PageMargins {
     double top = 2.54;     // cm
     double bottom = 2.54;  // cm

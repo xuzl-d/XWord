@@ -102,6 +102,30 @@ Document& Document::disableHeadingNumbering() {
     return *this;
 }
 
+Document& Document::enableImageNumbering(const std::string& prefix, CaptionNumStyle style) {
+    m_imageNumbering = true;
+    m_imageNumPrefix = prefix;
+    m_imageNumStyle = style;
+    return *this;
+}
+
+Document& Document::disableImageNumbering() {
+    m_imageNumbering = false;
+    return *this;
+}
+
+Document& Document::enableTableNumbering(const std::string& prefix, CaptionNumStyle style) {
+    m_tableNumbering = true;
+    m_tableNumPrefix = prefix;
+    m_tableNumStyle = style;
+    return *this;
+}
+
+Document& Document::disableTableNumbering() {
+    m_tableNumbering = false;
+    return *this;
+}
+
 Document& Document::setHeadingNumFormat(HeadingNumFormat fmt) {
     m_headingNumFormat = fmt;
     return *this;
@@ -142,8 +166,33 @@ Paragraph& Document::addParagraph(const std::string& text) {
     return *ptr;
 }
 
+namespace {
+// OPC part names must be valid URI segments (RFC 3986), so the in-zip filename
+// must be pure ASCII with no reserved/space characters. Non-ASCII source
+// filenames need to be remapped before being used as a part name.
+bool isAsciiSafePartName(const std::string& s) {
+    for (unsigned char c : s) {
+        if (c < 0x21 || c >= 0x7F) return false;
+        switch (c) {
+            case '"': case '#': case '%': case '<': case '>':
+            case '?': case '\\': case '`': case '{': case '}':
+            case '|': case '^': case '[': case ']':
+                return false;
+        }
+    }
+    return !s.empty();
+}
+} // namespace
+
 Image& Document::addImage(const std::string& filepath) {
     auto img = std::make_unique<Image>(filepath);
+    namespace fs = std::filesystem;
+    std::string filename = fs::u8path(filepath).filename().u8string();
+    if (!isAsciiSafePartName(filename)) {
+        std::string ext = fs::u8path(filepath).extension().u8string();
+        if (!isAsciiSafePartName(ext)) ext.clear();
+        img->setMediaName("image" + std::to_string(m_images.size() + 1) + ext);
+    }
     Image* ptr = img.get();
     m_images.push_back(std::move(img));
 
@@ -152,6 +201,14 @@ Image& Document::addImage(const std::string& filepath) {
     e.data.image = ptr;
     m_elements.push_back(e);
     return *ptr;
+}
+
+Image& Document::addImage(const std::filesystem::path& filepath) {
+    return addImage(filepath.u8string());
+}
+
+Image& Document::addImage(const std::wstring& filepath) {
+    return addImage(std::filesystem::path(filepath));
 }
 
 Table& Document::addTable(int rows, int cols) {
@@ -234,9 +291,46 @@ void Document::buildDocumentXml(std::string& xml) {
     auto mm = [](double cm) { return static_cast<int>(cm * 567.0); };
 
     // Content
+    int chapter = 0;       // current H1 chapter (for ByChapter mode)
+    int imgInChapter = 0;  // image counter within current chapter
+    int tblInChapter = 0;  // table counter within current chapter
+    int imgSeqNum = 0;     // global image counter (Sequential mode)
+    int tblSeqNum = 0;     // global table counter (Sequential mode)
+
+    auto formatCaptionNum = [&](CaptionNumStyle style, int chap, int chapIdx, int seqIdx) -> std::string {
+        if (style == CaptionNumStyle::ByChapter) {
+            int c = chap > 0 ? chap : 1;  // before any H1, fall back to chapter 1
+            return std::to_string(c) + "-" + std::to_string(chapIdx);
+        }
+        return std::to_string(seqIdx);
+    };
+
+    auto buildCaption = [&](const std::string& prefix, const std::string& numText,
+                            const std::string& userCaption) -> std::string {
+        std::string s;
+        s += "<w:p>"
+             "<w:pPr><w:jc w:val=\"center\"/></w:pPr>"
+             "<w:r><w:rPr><w:b/></w:rPr>"
+             "<w:t xml:space=\"preserve\">" + xmlEscape(prefix + numText) + "</w:t>"
+             "</w:r>";
+        if (!userCaption.empty()) {
+            s += "<w:r><w:rPr><w:b/></w:rPr>"
+                 "<w:t xml:space=\"preserve\"> " + xmlEscape(userCaption) + "</w:t>"
+                 "</w:r>";
+        }
+        s += "</w:p>";
+        return s;
+    };
+
     for (const auto& elem : m_elements) {
         switch (elem.type) {
             case ElementType::Heading: {
+                // Track chapter on top-level (H1) headings, ignoring TOC title etc.
+                if (elem.headingLevel == 1 && !elem.noNumbering) {
+                    ++chapter;
+                    imgInChapter = 0;
+                    tblInChapter = 0;
+                }
                 std::string styleId = "Heading" + std::to_string(elem.headingLevel);
                 // Check for custom alignment on this heading level
                 const auto& hs = m_headingStyles[elem.headingLevel - 1];
@@ -267,8 +361,21 @@ void Document::buildDocumentXml(std::string& xml) {
             }
             case ElementType::Image: {
                 Image* img = elem.data.image;
-                int rIdNum = static_cast<int>(m_images.size());
+                // Find this image's index in m_images
+                int idx = -1;
+                for (size_t k = 0; k < m_images.size(); ++k) {
+                    if (m_images[k].get() == img) { idx = static_cast<int>(k); break; }
+                }
+                int rIdNum = idx + 1;
                 img->setRId("rId_img_" + std::to_string(rIdNum));
+
+                // Auto-detect image size; constrain to page content width
+                int marginTwips = static_cast<int>((m_page.margins.left + m_page.margins.right) * 567.0);
+                int contentTwips = w - marginTwips;
+                int maxWidthEmu = contentTwips * 635;  // 1 twip = 635 EMU
+                auto imgSize = computeImageSize(img->filepath(), img->width(), img->height(), maxWidthEmu);
+                std::string cx = std::to_string(imgSize.widthEmu);
+                std::string cy = std::to_string(imgSize.heightEmu);
 
                 xml += "<w:p>";
                 if (img->hasAlignment()) {
@@ -277,14 +384,15 @@ void Document::buildDocumentXml(std::string& xml) {
                 xml += "<w:r>"
                        "<w:drawing>"
                        "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
-                       "<wp:extent cx=\"" + std::to_string(img->width() > 0 ? img->width() * 9525 : 3810000)
-                     + "\" cy=\"" + std::to_string(img->height() > 0 ? img->height() * 9525 : 2857500) + "\"/>"
+                       "<wp:extent cx=\"" + cx + "\" cy=\"" + cy + "\"/>"
+                       "<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>"
                        "<wp:docPr id=\"" + std::to_string(rIdNum) + "\" name=\"Picture " + std::to_string(rIdNum) + "\"/>"
+                       "<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" noChangeAspect=\"1\"/></wp:cNvGraphicFramePr>"
                        "<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">"
                        "<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
-                       "<pic:pic>"
+                       "<pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
                        "<pic:nvPicPr>"
-                       "<pic:cNvPr id=\"0\" name=\"Picture\"/>"
+                       "<pic:cNvPr id=\"" + std::to_string(rIdNum) + "\" name=\"Picture " + std::to_string(rIdNum) + "\"/>"
                        "<pic:cNvPicPr/>"
                        "</pic:nvPicPr>"
                        "<pic:blipFill>"
@@ -294,8 +402,7 @@ void Document::buildDocumentXml(std::string& xml) {
                        "<pic:spPr>"
                        "<a:xfrm>"
                        "<a:off x=\"0\" y=\"0\"/>"
-                       "<a:ext cx=\"" + std::to_string(img->width() > 0 ? img->width() * 9525 : 3810000)
-                     + "\" cy=\"" + std::to_string(img->height() > 0 ? img->height() * 9525 : 2857500) + "\"/>"
+                       "<a:ext cx=\"" + cx + "\" cy=\"" + cy + "\"/>"
                        "</a:xfrm>"
                        "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
                        "</pic:spPr>"
@@ -307,18 +414,34 @@ void Document::buildDocumentXml(std::string& xml) {
                        "</w:r>"
                        "</w:p>";
                 // Caption below image
-                if (!img->caption().empty()) {
-                    xml += "<w:p>"
-                           "<w:pPr><w:jc w:val=\"center\"/>"
-                           "<w:r><w:rPr><w:b/></w:rPr>"
-                           "<w:t xml:space=\"preserve\">" + xmlEscape(img->caption()) + "</w:t>"
-                           "</w:r>"
-                           "</w:p>";
+                if (!img->caption().empty() || m_imageNumbering) {
+                    if (m_imageNumbering) {
+                        ++imgSeqNum;
+                        ++imgInChapter;
+                        std::string numText = formatCaptionNum(
+                            m_imageNumStyle, chapter, imgInChapter, imgSeqNum);
+                        xml += buildCaption(m_imageNumPrefix, numText, img->caption());
+                    } else {
+                        xml += buildCaption("", "", img->caption());
+                    }
                 }
                 break;
             }
             case ElementType::Table: {
-                xml += elem.data.table->toXml();
+                Table* tbl = elem.data.table;
+                // Table caption goes ABOVE the table
+                if (!tbl->caption().empty() || m_tableNumbering) {
+                    if (m_tableNumbering) {
+                        ++tblSeqNum;
+                        ++tblInChapter;
+                        std::string numText = formatCaptionNum(
+                            m_tableNumStyle, chapter, tblInChapter, tblSeqNum);
+                        xml += buildCaption(m_tableNumPrefix, numText, tbl->caption());
+                    } else {
+                        xml += buildCaption("", "", tbl->caption());
+                    }
+                }
+                xml += tbl->toXml();
                 break;
             }
             case ElementType::BulletList: {
@@ -387,7 +510,7 @@ std::string Document::buildRelationshipsXml() {
                 for (const auto& cimg : table->cell(r, c).images()) {
                     if (!cimg.rId.empty()) {
                         namespace fs = std::filesystem;
-                        std::string mediaPath = "media/" + fs::path(cimg.filepath).filename().string();
+                        std::string mediaPath = "media/" + fs::u8path(cimg.filepath).filename().u8string();
                         xml += "<Relationship Id=\"" + cimg.rId + "\" "
                                "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" "
                                "Target=\"" + xmlEscape(mediaPath) + "\"/>";
@@ -643,7 +766,7 @@ std::string Document::buildContentTypesXml() {
     // Image types (document-level)
     for (const auto& img : m_images) {
         namespace fs = std::filesystem;
-        std::string ext = fs::path(img->filepath()).extension().string();
+        std::string ext = fs::u8path(img->filepath()).extension().u8string();
         if (!ext.empty()) ext = ext.substr(1);
         xml += "<Override PartName=\"/word/" + img->mediaPath() + "\" "
                "ContentType=\"" + imageContentType(ext) + "\"/>";
@@ -656,8 +779,8 @@ std::string Document::buildContentTypesXml() {
                 for (const auto& cimg : table->cell(r, c).images()) {
                     if (!cimg.rId.empty()) {
                         namespace fs = std::filesystem;
-                        std::string mediaPath = "media/" + fs::path(cimg.filepath).filename().string();
-                        std::string ext = fs::path(cimg.filepath).extension().string();
+                        std::string mediaPath = "media/" + fs::u8path(cimg.filepath).filename().u8string();
+                        std::string ext = fs::u8path(cimg.filepath).extension().u8string();
                         if (!ext.empty()) ext = ext.substr(1);
                         xml += "<Override PartName=\"/word/" + mediaPath + "\" "
                                "ContentType=\"" + imageContentType(ext) + "\"/>";
@@ -723,7 +846,7 @@ bool Document::save(const std::string& filepath) {
         // Add cell images from tables
         for (auto* cimg : cellImages) {
             namespace fs = std::filesystem;
-            std::string mediaPath = "media/" + fs::path(cimg->filepath).filename().string();
+            std::string mediaPath = "media/" + fs::u8path(cimg->filepath).filename().u8string();
             if (!zip.addFileEntry("word/" + mediaPath, cimg->filepath)) {
                 return false;
             }

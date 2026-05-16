@@ -3,15 +3,30 @@
 
 namespace xword {
 
+namespace {
+// Centralised conversions: all inputs land in UTF-8 m_filepath.
+std::string pathToUtf8(const std::filesystem::path& p) {
+    return p.u8string();
+}
+} // namespace
+
 Image::Image(const std::string& filepath)
     : m_filepath(filepath)
 {
-    // Extract filename for media path
     namespace fs = std::filesystem;
-    fs::path p(filepath);
-    std::string ext = p.extension().string();
-    m_rid = "rId_img_" + p.stem().string();
+    fs::path p = fs::u8path(filepath);
+    m_rid = "rId_img_" + p.stem().u8string();
 }
+
+Image::Image(const std::filesystem::path& filepath)
+    : m_filepath(pathToUtf8(filepath))
+{
+    m_rid = "rId_img_" + filepath.stem().u8string();
+}
+
+Image::Image(const std::wstring& filepath)
+    : Image(std::filesystem::path(filepath))
+{}
 
 Image& Image::setSize(int width, int height) {
     m_width = width;
@@ -31,8 +46,11 @@ Image& Image::setAlignment(Alignment align) {
 }
 
 std::string Image::mediaPath() const {
+    if (!m_mediaName.empty()) {
+        return "media/" + m_mediaName;
+    }
     namespace fs = std::filesystem;
-    return "media/" + fs::path(m_filepath).filename().string();
+    return "media/" + fs::u8path(m_filepath).filename().u8string();
 }
 
 } // namespace xword

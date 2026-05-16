@@ -38,8 +38,9 @@ public:
 std::string xmlEscape(const std::string& text);
 
 // Compute image dimensions in EMU from pixel size
+// maxWidthEmu: if > 0, auto-scale image to fit within this width (for page-fit behavior)
 struct ImageSize { int widthEmu; int heightEmu; };
-ImageSize computeImageSize(const std::string& filepath, int desiredW, int desiredH);
+ImageSize computeImageSize(const std::string& filepath, int desiredW, int desiredH, int maxWidthEmu = 0);
 
 // Get image content type based on extension
 std::string imageContentType(const std::string& ext);
