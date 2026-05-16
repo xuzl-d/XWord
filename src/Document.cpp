@@ -552,54 +552,61 @@ std::string Document::buildHeadingNumberingXml() {
                "</w:pPr>"
                "</w:lvl>";
     }
-    xml += "</w:abstractNum>"
-
-           "<w:num w:numId=\"10\">"
-           "<w:abstractNumId w:val=\"10\"/>"
-           "</w:num>";
-
+    xml += "</w:abstractNum>";
     return xml;
 }
 
 std::string Document::buildNumberingXml() {
     std::string xml;
     xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-          "<w:numbering xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+          "<w:numbering xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">";
 
-          // --- Abstract numbering 0: Bullet list ---
-          "<w:abstractNum w:abstractNumId=\"0\">"
-          "<w:multiLevelType w:val=\"hybridMultilevel\"/>"
-          "<w:lvl w:ilvl=\"0\">"
-          "<w:start w:val=\"1\"/>"
-          "<w:numFmt w:val=\"bullet\"/>"
-          "<w:lvlText w:val=\"\xE2\x80\xA2\"/>"       // • (U+2022) bullet
-          "<w:lvlJc w:val=\"left\"/>"
-          "<w:pPr>"
-          "<w:ind w:left=\"420\" w:hanging=\"420\"/>"
-          "</w:pPr>"
-          "</w:lvl>"
-          "</w:abstractNum>"
+    // --- Abstract 0: Bullet list (· 不编号，按列表格式) ---
+    // Define all 9 levels so Word does not fall back to Heading numbering
+    xml += "<w:abstractNum w:abstractNumId=\"0\">"
+           "<w:multiLevelType w:val=\"hybridMultilevel\"/>";
+    for (int i = 0; i < 9; ++i) {
+        xml += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"0\">"
+               "<w:start w:val=\"1\"/>"
+               "<w:numFmt w:val=\"bullet\"/>"
+               "<w:lvlText w:val=\"\xC2\xB7\"/>"   // · (U+00B7) middle dot
+               "<w:lvlJc w:val=\"left\"/>"
+               "<w:pPr>"
+               "<w:ind w:left=\"" + std::to_string((i + 1) * 420) + "\" w:hanging=\"420\"/>"
+               "</w:pPr>"
+               "<w:rPr><w:rFonts w:hint=\"default\"/></w:rPr>"
+               "</w:lvl>";
+    }
+    xml += "</w:abstractNum>";
 
-          // --- Abstract numbering 1: Ordered list (1. 2. 3. ...) ---
-          "<w:abstractNum w:abstractNumId=\"1\">"
-          "<w:multiLevelType w:val=\"hybridMultilevel\"/>"
-          "<w:lvl w:ilvl=\"0\">"
-          "<w:start w:val=\"1\"/>"
-          "<w:numFmt w:val=\"decimal\"/>"
-          "<w:lvlText w:val=\"%1.\"/>"
-          "<w:lvlJc w:val=\"left\"/>"
-          "<w:pPr>"
-          "<w:ind w:left=\"420\" w:hanging=\"420\"/>"
-          "</w:pPr>"
-          "</w:lvl>"
-          "</w:abstractNum>"
+    // --- Abstract 1: Ordered list (1. 2. 3. ...) ---
+    xml += "<w:abstractNum w:abstractNumId=\"1\">"
+           "<w:multiLevelType w:val=\"hybridMultilevel\"/>";
+    for (int i = 0; i < 9; ++i) {
+        xml += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"0\">"
+               "<w:start w:val=\"1\"/>"
+               "<w:numFmt w:val=\"decimal\"/>"
+               "<w:lvlText w:val=\"%" + std::to_string(i + 1) + ".\"/>"
+               "<w:lvlJc w:val=\"left\"/>"
+               "<w:pPr>"
+               "<w:ind w:left=\"" + std::to_string((i + 1) * 420) + "\" w:hanging=\"420\"/>"
+               "</w:pPr>"
+               "</w:lvl>";
+    }
+    xml += "</w:abstractNum>";
 
-          // --- Num instance 1: Bullet list reference ---
-          "<w:num w:numId=\"1\">"
-          "<w:abstractNumId w:val=\"0\"/>"
-          "</w:num>";
+    // --- Heading abstractNum (only when needed) ---
+    if (m_headingNumbering) {
+        xml += buildHeadingNumberingXml();
+    }
 
-    // --- Unique num instances for each ordered list ---
+    // --- Num instances (must come AFTER all abstractNum definitions) ---
+    // numId=1: Bullet list (shared by all bullet lists)
+    xml += "<w:num w:numId=\"1\">"
+           "<w:abstractNumId w:val=\"0\"/>"
+           "</w:num>";
+
+    // numId=3+: Each ordered list gets its own restart-from-1
     for (int id = 3; id < m_nextOrderedListId; ++id) {
         xml += "<w:num w:numId=\"" + std::to_string(id) + "\">"
                "<w:abstractNumId w:val=\"1\"/>"
@@ -609,9 +616,11 @@ std::string Document::buildNumberingXml() {
                "</w:num>";
     }
 
-    // --- Heading auto-numbering ---
+    // numId=10: Heading numbering instance
     if (m_headingNumbering) {
-        xml += buildHeadingNumberingXml();
+        xml += "<w:num w:numId=\"10\">"
+               "<w:abstractNumId w:val=\"10\"/>"
+               "</w:num>";
     }
 
     xml += "</w:numbering>";
