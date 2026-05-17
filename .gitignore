@@ -1,0 +1,5 @@
+# Ignore build artifacts
+build/
+
+# macOS Finder metadata
+.DS_Store

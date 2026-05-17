@@ -174,11 +174,11 @@ int main() {
 
     doc.addHeading("插图", 2);
     doc.addParagraph("插入图片测试（按章节自动编号：图1-1、图1-2 ...）：");
-    doc.addImage("Board001.png")
+    doc.addImage("../examples/res/Board001.png")
        .setCaption("面板示意图")
        .setAlignment(Alignment::Center);
 
-    doc.addImage("test.emf")
+    doc.addImage("../examples/res/test.emf")
        .setCaption("矢量示意图 （自动适应页面宽度）")
        .setAlignment(Alignment::Center);
 
@@ -243,7 +243,7 @@ int main() {
     doc.addParagraph("我也不知道");
 
     // 第2章的图与表，验证章内编号重置（图2-1、表2-1）
-    doc.addImage(u8"平面图.emf").setCaption(u8"第二章首图");
+    doc.addImage(u8"../examples/res/平面图.emf").setCaption(u8"第二章首图");
     // 故意添加一个不存在的图片：库会跳过它，文档仍合法可打开
     doc.addImage("nonexistent_xyz.png").setCaption("缺失图片测试");
     auto& tableCh2 = doc.addTable(2, 2);
@@ -256,7 +256,7 @@ int main() {
     doc.addHeading("疯狂星期四", 2);
     doc.addHeading("买一送一", 3);
     // ---- Save ----
-    std::string outputPath = "demo_output.docx";
+    std::string outputPath = "demo_output.pdf";
     if (doc.save(outputPath)) {
         std::cout << "Document saved to: " << outputPath << std::endl;
     } else {
