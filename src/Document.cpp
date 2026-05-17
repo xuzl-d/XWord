@@ -11,34 +11,71 @@ namespace xword {
 
 using namespace internal;
 
+struct BulletList::Impl { ListType m_type; int m_level=0,m_numId=0; std::vector<std::string> m_items; };
+
+enum class ElementType { Heading, Paragraph, Image, Table, BulletList, Equation, TOC };
+
+struct Element {
+    ElementType type; int headingLevel=0; std::string text,extra; bool noNumbering=false;
+    union Data { Paragraph* paragraph=nullptr; class Image* image; class Table* table;
+        class BulletList* bulletList; class Equation* equation; void* ptr; Data(){} } data;
+};
+
+struct Document::Impl {
+    Page m_page;
+    std::vector<std::unique_ptr<Paragraph>>   m_paragraphs;
+    std::vector<std::unique_ptr<Image>>       m_images;
+    std::vector<std::unique_ptr<Table>>       m_tables;
+    std::vector<std::unique_ptr<BulletList>>  m_lists;
+    std::vector<std::unique_ptr<Equation>>    m_equations;
+    std::vector<Element>                      m_elements;
+    HeadingStyle    m_headingStyles[6];
+    bool            m_headingNumbering = false;
+    HeadingNumFormat m_headingNumFormat = HeadingNumFormat::Decimal;
+    int             m_nextOrderedListId = 3;
+    int             m_defaultIndent = 480;
+    bool            m_imageNumbering = false;
+    std::string     m_imageNumPrefix = "å¾";
+    CaptionNumStyle m_imageNumStyle = CaptionNumStyle::Sequential;
+    bool            m_tableNumbering = false;
+    std::string     m_tableNumPrefix = "è¡¨";
+    CaptionNumStyle m_tableNumStyle = CaptionNumStyle::Sequential;
+    std::unique_ptr<Paragraph> m_header, m_footer;
+    bool            m_isTemplate = false;
+    std::unordered_map<std::string, std::string> m_templateParts, m_templateVars;
+};
+
 // ---- BulletList ----
 
-BulletList::BulletList(ListType type) : m_type(type) {}
+BulletList::BulletList(ListType type) : m_impl(std::make_unique<Impl>()) { m_impl->m_type = type; }
+BulletList::~BulletList() = default;
+BulletList::BulletList(BulletList&&) noexcept = default;
+BulletList& BulletList::operator=(BulletList&&) noexcept = default;
 
 BulletList& BulletList::addItem(const std::string& text) {
-    m_items.push_back(text);
+    m_impl->m_items.push_back(text);
     return *this;
 }
 
 BulletList& BulletList::setLevel(int level) {
-    m_level = level;
+    m_impl->m_level = level;
     return *this;
 }
 
 BulletList& BulletList::setNumId(int id) {
-    m_numId = id;
+    m_impl->m_numId = id;
     return *this;
 }
 
 std::string BulletList::toXml() const {
     std::string xml;
-    int numId = m_numId > 0 ? m_numId : ((m_type == ListType::Bullet) ? 1 : 2);
-    for (const auto& item : m_items) {
+    int numId = m_impl->m_numId > 0 ? m_impl->m_numId : ((m_impl->m_type == ListType::Bullet) ? 1 : 2);
+    for (const auto& item : m_impl->m_items) {
         xml += "<w:p>"
                "<w:pPr>"
                "<w:pStyle w:val=\"ListParagraph\"/>"
                "<w:numPr>"
-               "<w:ilvl w:val=\"" + std::to_string(m_level) + "\"/>"
+               "<w:ilvl w:val=\"" + std::to_string(m_impl->m_level) + "\"/>"
                "<w:numId w:val=\"" + std::to_string(numId) + "\"/>"
                "</w:numPr>"
                "</w:pPr>"
@@ -48,21 +85,23 @@ std::string BulletList::toXml() const {
     return xml;
 }
 
+int BulletList::numId() const { return m_impl->m_numId; }
+
 // ---- Document ----
 
-Document::Document() = default;
+Document::Document() : m_impl(std::make_unique<Impl>()) {}
 Document::~Document() = default;
 
 Document& Document::setPage(const Page& page) {
-    m_page = page;
+    m_impl->m_page = page;
     return *this;
 }
 
 Document& Document::setDefaultParagraphIndent(double chars, int fontSizePt) {
     if (chars <= 0) {
-        m_defaultIndent = 0;
+        m_impl->m_defaultIndent = 0;
     } else {
-        m_defaultIndent = static_cast<int>(chars * fontSizePt * 20);
+        m_impl->m_defaultIndent = static_cast<int>(chars * fontSizePt * 20);
     }
     return *this;
 }
@@ -72,7 +111,7 @@ Document& Document::addHeading(const std::string& text, int level) {
     e.type = ElementType::Heading;
     e.text = text;
     e.headingLevel = level;
-    m_elements.push_back(e);
+    m_impl->m_elements.push_back(e);
     return *this;
 }
 
@@ -82,86 +121,86 @@ Document& Document::addHeadingNoNum(const std::string& text, int level) {
     e.text = text;
     e.headingLevel = level;
     e.noNumbering = true;
-    m_elements.push_back(e);
+    m_impl->m_elements.push_back(e);
     return *this;
 }
 
 Document& Document::setHeadingStyle(int level, const HeadingStyle& style) {
     if (level >= 1 && level <= 6) {
-        m_headingStyles[level - 1] = style;
+        m_impl->m_headingStyles[level - 1] = style;
     }
     return *this;
 }
 
 Document& Document::enableHeadingNumbering() {
-    m_headingNumbering = true;
+    m_impl->m_headingNumbering = true;
     return *this;
 }
 
 Document& Document::disableHeadingNumbering() {
-    m_headingNumbering = false;
+    m_impl->m_headingNumbering = false;
     return *this;
 }
 
 Document& Document::enableImageNumbering(const std::string& prefix, CaptionNumStyle style) {
-    m_imageNumbering = true;
-    m_imageNumPrefix = prefix;
-    m_imageNumStyle = style;
+    m_impl->m_imageNumbering = true;
+    m_impl->m_imageNumPrefix = prefix;
+    m_impl->m_imageNumStyle = style;
     return *this;
 }
 
 Document& Document::disableImageNumbering() {
-    m_imageNumbering = false;
+    m_impl->m_imageNumbering = false;
     return *this;
 }
 
 Document& Document::enableTableNumbering(const std::string& prefix, CaptionNumStyle style) {
-    m_tableNumbering = true;
-    m_tableNumPrefix = prefix;
-    m_tableNumStyle = style;
+    m_impl->m_tableNumbering = true;
+    m_impl->m_tableNumPrefix = prefix;
+    m_impl->m_tableNumStyle = style;
     return *this;
 }
 
 Document& Document::disableTableNumbering() {
-    m_tableNumbering = false;
+    m_impl->m_tableNumbering = false;
     return *this;
 }
 
 Document& Document::setHeadingNumFormat(HeadingNumFormat fmt) {
-    m_headingNumFormat = fmt;
+    m_impl->m_headingNumFormat = fmt;
     return *this;
 }
 
 Document& Document::setHeader(const std::string& text) {
-    m_header = std::make_unique<Paragraph>();
-    if (!text.empty()) m_header->addRun(text);
-    m_header->setAlignment(Alignment::Center);
-    m_header->setFirstLineIndent(0);
+    m_impl->m_header = std::make_unique<Paragraph>();
+    if (!text.empty()) m_impl->m_header->addRun(text);
+    m_impl->m_header->setAlignment(Alignment::Center);
+    m_impl->m_header->setFirstLineIndent(0);
     return *this;
 }
 
 Document& Document::setFooter(const std::string& text) {
-    m_footer = std::make_unique<Paragraph>();
-    if (!text.empty()) m_footer->addRun(text);
-    m_footer->setAlignment(Alignment::Center);
-    m_footer->setFirstLineIndent(0);
+    m_impl->m_footer = std::make_unique<Paragraph>();
+    if (!text.empty()) m_impl->m_footer->addRun(text);
+    m_impl->m_footer->setAlignment(Alignment::Center);
+    m_impl->m_footer->setFirstLineIndent(0);
     return *this;
 }
 
 Paragraph& Document::setHeader() {
-    m_header = std::make_unique<Paragraph>();
-    m_header->setFirstLineIndent(0);
-    return *m_header;
+    m_impl->m_header = std::make_unique<Paragraph>();
+    m_impl->m_header->setFirstLineIndent(0);
+    return *m_impl->m_header;
 }
 
 Paragraph& Document::setFooter() {
-    m_footer = std::make_unique<Paragraph>();
-    m_footer->setFirstLineIndent(0);
-    return *m_footer;
+    m_impl->m_footer = std::make_unique<Paragraph>();
+    m_impl->m_footer->setFirstLineIndent(0);
+    return *m_impl->m_footer;
 }
 
-void Document::clearHeader() { m_header.reset(); }
-void Document::clearFooter() { m_footer.reset(); }
+void Document::clearHeader() { m_impl->m_header.reset(); }
+void Document::clearFooter() { m_impl->m_footer.reset(); }
 
 Document& Document::addTOC(const std::string& levels, const std::string& title) {
     if (!title.empty()) {
@@ -170,12 +209,12 @@ Document& Document::addTOC(const std::string& levels, const std::string& title) 
         ht.text = title;
         ht.headingLevel = 1;
         ht.noNumbering = true;  // TOC title should not be numbered
-        m_elements.push_back(ht);
+        m_impl->m_elements.push_back(ht);
     }
     Element e;
     e.type = ElementType::TOC;
     e.extra = levels; // level range like "1-3"
-    m_elements.push_back(e);
+    m_impl->m_elements.push_back(e);
     return *this;
 }
 
@@ -185,16 +224,16 @@ Paragraph& Document::addParagraph(const std::string& text) {
         p->addRun(text);
     }
     // Apply default indent
-    if (m_defaultIndent > 0) {
-        p->setFirstLineIndent(m_defaultIndent);
+    if (m_impl->m_defaultIndent > 0) {
+        p->setFirstLineIndent(m_impl->m_defaultIndent);
     }
     Paragraph* ptr = p.get();
-    m_paragraphs.push_back(std::move(p));
+    m_impl->m_paragraphs.push_back(std::move(p));
 
     Element e;
     e.type = ElementType::Paragraph;
     e.data.paragraph = ptr;
-    m_elements.push_back(e);
+    m_impl->m_elements.push_back(e);
     return *ptr;
 }
 
@@ -223,15 +262,15 @@ Image& Document::addImage(const std::string& filepath) {
     if (!isAsciiSafePartName(filename)) {
         std::string ext = fs::u8path(filepath).extension().u8string();
         if (!isAsciiSafePartName(ext)) ext.clear();
-        img->setMediaName("image" + std::to_string(m_images.size() + 1) + ext);
+        img->setMediaName("image" + std::to_string(m_impl->m_images.size() + 1) + ext);
     }
     Image* ptr = img.get();
-    m_images.push_back(std::move(img));
+    m_impl->m_images.push_back(std::move(img));
 
     Element e;
     e.type = ElementType::Image;
     e.data.image = ptr;
-    m_elements.push_back(e);
+    m_impl->m_elements.push_back(e);
     return *ptr;
 }
 
@@ -246,12 +285,12 @@ Image& Document::addImage(const std::wstring& filepath) {
 Table& Document::addTable(int rows, int cols) {
     auto tbl = std::make_unique<Table>(rows, cols);
     Table* ptr = tbl.get();
-    m_tables.push_back(std::move(tbl));
+    m_impl->m_tables.push_back(std::move(tbl));
 
     Element e;
     e.type = ElementType::Table;
     e.data.table = ptr;
-    m_elements.push_back(e);
+    m_impl->m_elements.push_back(e);
     return *ptr;
 }
 
@@ -259,50 +298,50 @@ BulletList& Document::addBulletList() {
     auto lst = std::make_unique<BulletList>(ListType::Bullet);
     lst->setNumId(1); // all bullet lists share numId=1
     BulletList* ptr = lst.get();
-    m_lists.push_back(std::move(lst));
+    m_impl->m_lists.push_back(std::move(lst));
 
     Element e;
     e.type = ElementType::BulletList;
     e.data.bulletList = ptr;
-    m_elements.push_back(e);
+    m_impl->m_elements.push_back(e);
     return *ptr;
 }
 
 BulletList& Document::addOrderedList() {
     auto lst = std::make_unique<BulletList>(ListType::Ordered);
-    int id = m_nextOrderedListId++;
+    int id = m_impl->m_nextOrderedListId++;
     lst->setNumId(id);
     BulletList* ptr = lst.get();
-    m_lists.push_back(std::move(lst));
+    m_impl->m_lists.push_back(std::move(lst));
 
     Element e;
     e.type = ElementType::BulletList;
     e.data.bulletList = ptr;
-    m_elements.push_back(e);
+    m_impl->m_elements.push_back(e);
     return *ptr;
 }
 
 Equation& Document::addEquation(const std::string& latex) {
     auto eq = std::make_unique<Equation>(latex, EquationMode::Inline);
     Equation* ptr = eq.get();
-    m_equations.push_back(std::move(eq));
+    m_impl->m_equations.push_back(std::move(eq));
 
     Element e;
     e.type = ElementType::Equation;
     e.data.equation = ptr;
-    m_elements.push_back(e);
+    m_impl->m_elements.push_back(e);
     return *ptr;
 }
 
 Equation& Document::addDisplayEquation(const std::string& latex) {
     auto eq = std::make_unique<Equation>(latex, EquationMode::Display);
     Equation* ptr = eq.get();
-    m_equations.push_back(std::move(eq));
+    m_impl->m_equations.push_back(std::move(eq));
 
     Element e;
     e.type = ElementType::Equation;
     e.data.equation = ptr;
-    m_elements.push_back(e);
+    m_impl->m_elements.push_back(e);
     return *ptr;
 }
 
@@ -318,8 +357,8 @@ void Document::buildDocumentXml(std::string& xml) {
 
     xml += "<w:body>";
 
-    int w = pageWidthDxa(m_page.size, m_page.orientation);
-    int h = pageHeightDxa(m_page.size, m_page.orientation);
+    int w = pageWidthDxa(m_impl->m_page.size, m_impl->m_page.orientation);
+    int h = pageHeightDxa(m_impl->m_page.size, m_impl->m_page.orientation);
     auto mm = [](double cm) { return static_cast<int>(cm * 567.0); };
 
     // Content
@@ -354,7 +393,7 @@ void Document::buildDocumentXml(std::string& xml) {
         return s;
     };
 
-    for (const auto& elem : m_elements) {
+    for (const auto& elem : m_impl->m_elements) {
         switch (elem.type) {
             case ElementType::Heading: {
                 // Track chapter on top-level (H1) headings, ignoring TOC title etc.
@@ -365,7 +404,7 @@ void Document::buildDocumentXml(std::string& xml) {
                 }
                 std::string styleId = "Heading" + std::to_string(elem.headingLevel);
                 // Check for custom alignment on this heading level
-                const auto& hs = m_headingStyles[elem.headingLevel - 1];
+                const auto& hs = m_impl->m_headingStyles[elem.headingLevel - 1];
                 xml += "<w:p>"
                        "<w:pPr>"
                        "<w:pStyle w:val=\"" + styleId + "\"/>"
@@ -374,7 +413,7 @@ void Document::buildDocumentXml(std::string& xml) {
                     xml += "<w:jc w:val=\"" + alignmentToString(hs.alignment) + "\"/>";
                 }
                 // Heading numbering: explicit numPr when enabled, numId=0 to suppress
-                if (m_headingNumbering && !elem.noNumbering) {
+                if (m_impl->m_headingNumbering && !elem.noNumbering) {
                     xml += "<w:numPr>"
                            "<w:ilvl w:val=\"" + std::to_string(elem.headingLevel - 1) + "\"/>"
                            "<w:numId w:val=\"10\"/>"
@@ -394,16 +433,16 @@ void Document::buildDocumentXml(std::string& xml) {
             case ElementType::Image: {
                 Image* img = elem.data.image;
                 if (img->skipped()) break;  // missing source file → omit entirely
-                // Find this image's index in m_images
+                // Find this image's index in m_impl->m_images
                 int idx = -1;
-                for (size_t k = 0; k < m_images.size(); ++k) {
-                    if (m_images[k].get() == img) { idx = static_cast<int>(k); break; }
+                for (size_t k = 0; k < m_impl->m_images.size(); ++k) {
+                    if (m_impl->m_images[k].get() == img) { idx = static_cast<int>(k); break; }
                 }
                 int rIdNum = idx + 1;
                 img->setRId("rId_img_" + std::to_string(rIdNum));
 
                 // Auto-detect image size; constrain to page content width
-                int marginTwips = static_cast<int>((m_page.margins.left + m_page.margins.right) * 567.0);
+                int marginTwips = static_cast<int>((m_impl->m_page.margins.left + m_impl->m_page.margins.right) * 567.0);
                 int contentTwips = w - marginTwips;
                 int maxWidthEmu = contentTwips * 635;  // 1 twip = 635 EMU
                 auto imgSize = computeImageSize(img->filepath(), img->width(), img->height(), maxWidthEmu);
@@ -450,13 +489,13 @@ void Document::buildDocumentXml(std::string& xml) {
                        "</w:r>"
                        "</w:p>";
                 // Caption below image
-                if (!img->caption().empty() || m_imageNumbering) {
-                    if (m_imageNumbering) {
+                if (!img->caption().empty() || m_impl->m_imageNumbering) {
+                    if (m_impl->m_imageNumbering) {
                         ++imgSeqNum;
                         ++imgInChapter;
                         std::string numText = formatCaptionNum(
-                            m_imageNumStyle, chapter, imgInChapter, imgSeqNum);
-                        xml += buildCaption(m_imageNumPrefix, numText, img->caption());
+                            m_impl->m_imageNumStyle, chapter, imgInChapter, imgSeqNum);
+                        xml += buildCaption(m_impl->m_imageNumPrefix, numText, img->caption());
                     } else {
                         xml += buildCaption("", "", img->caption());
                     }
@@ -466,13 +505,13 @@ void Document::buildDocumentXml(std::string& xml) {
             case ElementType::Table: {
                 Table* tbl = elem.data.table;
                 // Table caption goes ABOVE the table
-                if (!tbl->caption().empty() || m_tableNumbering) {
-                    if (m_tableNumbering) {
+                if (!tbl->caption().empty() || m_impl->m_tableNumbering) {
+                    if (m_impl->m_tableNumbering) {
                         ++tblSeqNum;
                         ++tblInChapter;
                         std::string numText = formatCaptionNum(
-                            m_tableNumStyle, chapter, tblInChapter, tblSeqNum);
-                        xml += buildCaption(m_tableNumPrefix, numText, tbl->caption());
+                            m_impl->m_tableNumStyle, chapter, tblInChapter, tblSeqNum);
+                        xml += buildCaption(m_impl->m_tableNumPrefix, numText, tbl->caption());
                     } else {
                         xml += buildCaption("", "", tbl->caption());
                     }
@@ -510,22 +549,22 @@ void Document::buildDocumentXml(std::string& xml) {
 
     // Final section properties
     xml += "<w:sectPr>";
-    if (m_header) {
+    if (m_impl->m_header) {
         xml += "<w:headerReference w:type=\"default\" r:id=\"rIdHeader\"/>";
     }
-    if (m_footer) {
+    if (m_impl->m_footer) {
         xml += "<w:footerReference w:type=\"default\" r:id=\"rIdFooter\"/>";
     }
     xml += "<w:pgSz w:w=\"" + std::to_string(w)
          + "\" w:h=\"" + std::to_string(h) + "\"";
-    if (m_page.orientation == Orientation::Landscape) {
+    if (m_impl->m_page.orientation == Orientation::Landscape) {
         xml += " w:orient=\"landscape\"";
     }
     xml += "/>";
-    xml += "<w:pgMar w:top=\"" + std::to_string(mm(m_page.margins.top))
-         + "\" w:right=\"" + std::to_string(mm(m_page.margins.right))
-         + "\" w:bottom=\"" + std::to_string(mm(m_page.margins.bottom))
-         + "\" w:left=\"" + std::to_string(mm(m_page.margins.left))
+    xml += "<w:pgMar w:top=\"" + std::to_string(mm(m_impl->m_page.margins.top))
+         + "\" w:right=\"" + std::to_string(mm(m_impl->m_page.margins.right))
+         + "\" w:bottom=\"" + std::to_string(mm(m_impl->m_page.margins.bottom))
+         + "\" w:left=\"" + std::to_string(mm(m_impl->m_page.margins.left))
          + "\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>";
     xml += "</w:sectPr>";
 
@@ -538,16 +577,16 @@ std::string Document::buildRelationshipsXml() {
           "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">";
 
     // Image relationships (document-level)
-    for (size_t i = 0; i < m_images.size(); ++i) {
-        if (m_images[i]->skipped()) continue;
+    for (size_t i = 0; i < m_impl->m_images.size(); ++i) {
+        if (m_impl->m_images[i]->skipped()) continue;
         std::string rId = "rId_img_" + std::to_string(i + 1);
         xml += "<Relationship Id=\"" + rId + "\" "
                "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" "
-               "Target=\"" + xmlEscape(m_images[i]->mediaPath()) + "\"/>";
+               "Target=\"" + xmlEscape(m_impl->m_images[i]->mediaPath()) + "\"/>";
     }
 
     // Image relationships (cell-level from tables)
-    for (const auto& table : m_tables) {
+    for (const auto& table : m_impl->m_tables) {
         for (int r = 0; r < table->rows(); ++r) {
             for (int c = 0; c < table->cols(); ++c) {
                 for (const auto& cimg : table->cell(r, c).images()) {
@@ -575,12 +614,12 @@ std::string Document::buildRelationshipsXml() {
            "Target=\"numbering.xml\"/>";
 
     // Header / footer relationships
-    if (m_header) {
+    if (m_impl->m_header) {
         xml += "<Relationship Id=\"rIdHeader\" "
                "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/header\" "
                "Target=\"header1.xml\"/>";
     }
-    if (m_footer) {
+    if (m_impl->m_footer) {
         xml += "<Relationship Id=\"rIdFooter\" "
                "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer\" "
                "Target=\"footer1.xml\"/>";
@@ -597,7 +636,7 @@ std::string Document::buildStylesXml() {
     const double defaultAfter[6] = {120, 80, 60, 40, 40, 40};
 
     auto makeHeadingStyle = [&](int level, int idx) {
-        const auto& hs = m_headingStyles[idx];
+        const auto& hs = m_impl->m_headingStyles[idx];
         int sz = hs.fontSize > 0 ? hs.fontSize : defaultSizes[idx];
         int szHalf = sz * 2; // OOXML uses half-points
 
@@ -640,8 +679,8 @@ std::string Document::buildStylesXml() {
     };
 
     std::string normalIndent;
-    if (m_defaultIndent > 0) {
-        normalIndent = "<w:ind w:firstLine=\"" + std::to_string(m_defaultIndent) + "\"/>";
+    if (m_impl->m_defaultIndent > 0) {
+        normalIndent = "<w:ind w:firstLine=\"" + std::to_string(m_impl->m_defaultIndent) + "\"/>";
     }
 
     std::string xml;
@@ -711,7 +750,7 @@ std::string Document::buildHeaderXml() {
         "<w:hdr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""
         " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\""
         " xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">";
-    xml += m_header ? m_header->toXml() : std::string("<w:p/>");
+    xml += m_impl->m_header ? m_impl->m_header->toXml() : std::string("<w:p/>");
     xml += "</w:hdr>";
     return xml;
 }
@@ -721,7 +760,7 @@ std::string Document::buildFooterXml() {
         "<w:ftr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""
         " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\""
         " xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">";
-    xml += m_footer ? m_footer->toXml() : std::string("<w:p/>");
+    xml += m_impl->m_footer ? m_impl->m_footer->toXml() : std::string("<w:p/>");
     xml += "</w:ftr>";
     return xml;
 }
@@ -732,7 +771,7 @@ std::string Document::buildHeadingNumberingXml() {
            "<w:multiLevelType w:val=\"hybridMultilevel\"/>";
 
     // Level 1 text depends on format
-    std::string l1Text = (m_headingNumFormat == HeadingNumFormat::Chapter)
+    std::string l1Text = (m_impl->m_headingNumFormat == HeadingNumFormat::Chapter)
         ? "\xE7\xAC\xAC%1\xE7\xAB\xA0"  // 第%1章
         : "%1";
 
@@ -795,7 +834,7 @@ std::string Document::buildNumberingXml() {
     xml += "</w:abstractNum>";
 
     // --- Heading abstractNum (only when needed) ---
-    if (m_headingNumbering) {
+    if (m_impl->m_headingNumbering) {
         xml += buildHeadingNumberingXml();
     }
 
@@ -806,7 +845,7 @@ std::string Document::buildNumberingXml() {
            "</w:num>";
 
     // numId=3+: Each ordered list gets its own restart-from-1
-    for (int id = 3; id < m_nextOrderedListId; ++id) {
+    for (int id = 3; id < m_impl->m_nextOrderedListId; ++id) {
         xml += "<w:num w:numId=\"" + std::to_string(id) + "\">"
                "<w:abstractNumId w:val=\"1\"/>"
                "<w:lvlOverride w:ilvl=\"0\">"
@@ -816,7 +855,7 @@ std::string Document::buildNumberingXml() {
     }
 
     // numId=10: Heading numbering instance
-    if (m_headingNumbering) {
+    if (m_impl->m_headingNumbering) {
         xml += "<w:num w:numId=\"10\">"
                "<w:abstractNumId w:val=\"10\"/>"
                "</w:num>";
@@ -839,17 +878,17 @@ std::string Document::buildContentTypesXml() {
           "<Override PartName=\"/word/styles.xml\" "
           "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>";
 
-    if (m_header) {
+    if (m_impl->m_header) {
         xml += "<Override PartName=\"/word/header1.xml\" "
                "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/>";
     }
-    if (m_footer) {
+    if (m_impl->m_footer) {
         xml += "<Override PartName=\"/word/footer1.xml\" "
                "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>";
     }
 
     // Image types (document-level)
-    for (const auto& img : m_images) {
+    for (const auto& img : m_impl->m_images) {
         if (img->skipped()) continue;
         namespace fs = std::filesystem;
         std::string ext = fs::u8path(img->filepath()).extension().u8string();
@@ -859,7 +898,7 @@ std::string Document::buildContentTypesXml() {
     }
 
     // Image types (cell-level from tables)
-    for (const auto& table : m_tables) {
+    for (const auto& table : m_impl->m_tables) {
         for (int r = 0; r < table->rows(); ++r) {
             for (int c = 0; c < table->cols(); ++c) {
                 for (const auto& cimg : table->cell(r, c).images()) {
@@ -882,7 +921,7 @@ std::string Document::buildContentTypesXml() {
 }
 
 bool Document::save(const std::string& filepath) {
-    if (m_isTemplate)
+    if (m_impl->m_isTemplate)
         return saveTemplate(filepath);
 
     try {
@@ -896,14 +935,14 @@ bool Document::save(const std::string& filepath) {
             std::error_code ec;
             return fs::is_regular_file(fs::u8path(p), ec);
         };
-        for (auto& img : m_images) {
+        for (auto& img : m_impl->m_images) {
             if (!probe(img->filepath())) {
                 img->setSkipped(true);
                 std::cerr << "[xword] warning: skipping missing image '"
                           << img->filepath() << "'\n";
             }
         }
-        for (auto& table : m_tables) {
+        for (auto& table : m_impl->m_tables) {
             for (int r = 0; r < table->rows(); ++r) {
                 for (int c = 0; c < table->cols(); ++c) {
                     for (auto& cimg : table->cell(r, c).images()) {
@@ -919,12 +958,12 @@ bool Document::save(const std::string& filepath) {
 
         // Collect and register cell images from all tables
         std::vector<CellImage*> cellImages;
-        for (auto& table : m_tables) {
+        for (auto& table : m_impl->m_tables) {
             table->collectCellImages(cellImages);
         }
 
         // Assign rIds to cell images (skip dropped ones)
-        int imgIndex = static_cast<int>(m_images.size());
+        int imgIndex = static_cast<int>(m_impl->m_images.size());
         int cellRidCounter = 0;
         for (auto* cimg : cellImages) {
             if (cimg->skipped) {
@@ -961,11 +1000,11 @@ bool Document::save(const std::string& filepath) {
         zip.addEntry("word/_rels/document.xml.rels", relsXml);
         zip.addEntry("word/styles.xml", buildStylesXml());
         zip.addEntry("word/numbering.xml", buildNumberingXml());
-        if (m_header) zip.addEntry("word/header1.xml", buildHeaderXml());
-        if (m_footer) zip.addEntry("word/footer1.xml", buildFooterXml());
+        if (m_impl->m_header) zip.addEntry("word/header1.xml", buildHeaderXml());
+        if (m_impl->m_footer) zip.addEntry("word/footer1.xml", buildFooterXml());
 
         // Add document-level images
-        for (const auto& img : m_images) {
+        for (const auto& img : m_impl->m_images) {
             if (img->skipped()) continue;
             if (!zip.addFileEntry("word/" + img->mediaPath(), img->filepath())) {
                 return false;
@@ -1091,14 +1130,14 @@ std::string replaceVars(const std::string& s,
 bool Document::open(const std::string& filepath) {
     auto parts = internal::readZip(filepath);
     if (parts.empty()) return false;
-    m_templateParts = std::move(parts);
-    m_isTemplate = true;
-    m_templateVars.clear();
+    m_impl->m_templateParts = std::move(parts);
+    m_impl->m_isTemplate = true;
+    m_impl->m_templateVars.clear();
     return true;
 }
 
 Document& Document::set(const std::string& key, const std::string& value) {
-    m_templateVars[key] = value;
+    m_impl->m_templateVars[key] = value;
     return *this;
 }
 
@@ -1113,7 +1152,7 @@ std::string Document::renderXml(const std::string& xml) {
     size_t bodyTag = xml.find("<w:body>");
     size_t bodyEnd = xml.find("</w:body>");
     if (bodyTag == std::string::npos || bodyEnd == std::string::npos)
-        return replaceVars(xml, m_templateVars); // simple fallback for headers
+        return replaceVars(xml, m_impl->m_templateVars); // simple fallback for headers
 
     std::string prefix = xml.substr(0, bodyTag + 9);
     std::string body   = xml.substr(bodyTag + 9, bodyEnd - (bodyTag + 9));
@@ -1135,7 +1174,7 @@ std::string Document::renderXml(const std::string& xml) {
             if (state != Normal)
                 throw std::runtime_error("nested {%if%} is not supported");
             state = isTruthy(
-                m_templateVars.count(m.key) ? m_templateVars.at(m.key) : "")
+                m_impl->m_templateVars.count(m.key) ? m_impl->m_templateVars.at(m.key) : "")
                 ? IfTrue : IfFalse;
         } else if (m.kind == "else") {
             if (state == Normal)
@@ -1158,7 +1197,7 @@ std::string Document::renderXml(const std::string& xml) {
     // 2. Replace ${key} variables in surviving XML.
     //    Simple string substitution is safe because ${key} appears only
     //    in <w:t> text content, never in XML tags or attributes.
-    bodyOut = replaceVars(bodyOut, m_templateVars);
+    bodyOut = replaceVars(bodyOut, m_impl->m_templateVars);
 
     return prefix + bodyOut + suffix;
 }
@@ -1169,14 +1208,14 @@ bool Document::saveTemplate(const std::string& filepath) {
 
         // Process document.xml if present
         std::string docXml;
-        if (m_templateParts.count("word/document.xml")) {
-            docXml = m_templateParts["word/document.xml"];
+        if (m_impl->m_templateParts.count("word/document.xml")) {
+            docXml = m_impl->m_templateParts["word/document.xml"];
             docXml = renderXml(docXml);
         }
 
         // Write all parts back (explicit iterators — structured bindings
         // may crash on v141 toolset).
-        for (auto it = m_templateParts.begin(); it != m_templateParts.end(); ++it) {
+        for (auto it = m_impl->m_templateParts.begin(); it != m_impl->m_templateParts.end(); ++it) {
             const std::string& name = it->first;
             std::string& data = it->second;
             if (name == "word/document.xml") {

@@ -1,58 +1,83 @@
 #pragma once
 
 #include "Types.hpp"
+#include <memory>
 #include <string>
 #include <filesystem>
 
 namespace xword {
 
+/// An image embedded in the document.
+///
+/// Images are added via Document::addImage().  The source file is read
+/// at save time; missing files are silently skipped so the output docx
+/// remains valid.
+///
+/// On Windows all path strings are interpreted as UTF-8 (the library
+/// compiles with /utf-8).
 class Image {
 public:
-    // Construct from a UTF-8 path string, an fs::path, or a wide-char path.
-    // On Windows, std::string is assumed to be UTF-8 (the project compiles with /utf-8).
+    /// Construct from a UTF-8 string.
     Image(const std::string& filepath);
+
+    /// Convenience overload for narrow string literals.
     Image(const char* filepath) : Image(std::string(filepath)) {}
+
+    /// Construct from a filesystem path (portable).
     Image(const std::filesystem::path& filepath);
+
+    /// Construct from a wide-character path (Windows).
     Image(const std::wstring& filepath);
+
+    /// Convenience overload for wide string literals.
     Image(const wchar_t* filepath) : Image(std::wstring(filepath)) {}
 
+    ~Image();
+    Image(Image&&) noexcept;
+    Image& operator=(Image&&) noexcept;
+
+    /// @{
+    /// Builder-style setters (chainable).
+
+    /// Set explicit pixel dimensions.  0 = auto-detect from file.
     Image& setSize(int width, int height);
+
+    /// Horizontal alignment of the image paragraph.
     Image& setAlignment(Alignment align);
+
+    /// Caption text displayed below the image.
     Image& setCaption(const std::string& caption);
+    /// @}
 
-    const std::string& filepath() const { return m_filepath; }
-    int width() const { return m_width; }
-    int height() const { return m_height; }
-    Alignment alignment() const { return m_alignment; }
-    bool hasAlignment() const { return m_hasAlignment; }
-    const std::string& caption() const { return m_caption; }
+    /// @{
+    /// Read accessors.
 
-    // Get relative path in the docx (word/media/xxx).
-    // For non-ASCII source filenames this is overridden by Document with a
-    // sanitised ASCII name (OPC part names must be valid URI segments).
+    const std::string& filepath()     const;
+    int                width()        const;
+    int                height()       const;
+    Alignment          alignment()    const;
+    bool               hasAlignment() const;
+    const std::string& caption()      const;
+    /// @}
+
+    /// Relative path inside the docx (word/media/xxx).
     std::string mediaPath() const;
-    void setMediaName(const std::string& name) { m_mediaName = name; }
-    const std::string& mediaName() const { return m_mediaName; }
 
-    // Get the relationship ID placeholder
-    std::string rId() const { return m_rid; }
-    void setRId(const std::string& rid) { m_rid = rid; }
+    /// Override the in-zip media filename (used for non-ASCII sources).
+    void               setMediaName(const std::string& name);
+    const std::string& mediaName() const;
 
-    // Skipped images (file missing/unreadable) are dropped from the docx
-    // entirely so the document remains valid. Set during Document::save().
-    bool skipped() const { return m_skipped; }
-    void setSkipped(bool v) { m_skipped = v; }
+    /// Relationship ID placeholder.
+    std::string rId() const;
+    void        setRId(const std::string& rid);
+
+    /// Whether this image was skipped (source file missing).
+    bool skipped() const;
+    void setSkipped(bool v);
 
 private:
-    std::string m_filepath;
-    int m_width = 0;
-    int m_height = 0;
-    Alignment m_alignment = Alignment::Left;
-    bool m_hasAlignment = false;
-    std::string m_rid;
-    std::string m_mediaName;  // ASCII-only filename used inside the docx
-    std::string m_caption;
-    bool m_skipped = false;
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
 };
 
 } // namespace xword

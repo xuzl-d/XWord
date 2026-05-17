@@ -1,28 +1,42 @@
 #pragma once
 
+#include "Types.hpp"
+#include <memory>
 #include <string>
 
 namespace xword {
 
-enum class EquationMode {
-    Inline,   // m:oMath
-    Display   // m:oMathPara
-};
-
+/// A LaTeX equation rendered as Office Math Markup Language (OMML).
+///
+/// Equations may be added inline inside a Paragraph via
+/// Paragraph::addEquation(), or as a standalone display equation via
+/// Document::addDisplayEquation().
 class Equation {
 public:
-    explicit Equation(const std::string& latex, EquationMode mode = EquationMode::Inline);
+    /// @param latex  LaTeX expression string.
+    /// @param mode   Inline (default) or Display.
+    explicit Equation(const std::string& latex,
+                      EquationMode mode = EquationMode::Inline);
 
+    ~Equation();
+    Equation(Equation&&) noexcept;
+    Equation& operator=(Equation&&) noexcept;
+
+    /// Change the rendering mode after construction.
     Equation& setMode(EquationMode mode);
 
-    const std::string& latex() const { return m_latex; }
-    EquationMode mode() const { return m_mode; }
+    /// The original LaTeX source.
+    const std::string& latex() const;
 
+    /// Current rendering mode.
+    EquationMode mode() const;
+
+    /// Build OMML XML for this equation.
     std::string toXml() const;
 
 private:
-    std::string m_latex;
-    EquationMode m_mode;
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
 };
 
 } // namespace xword

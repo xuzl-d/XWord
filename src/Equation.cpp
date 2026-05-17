@@ -564,22 +564,34 @@ static std::string parseLaTeX(const char*& p, const char* end, bool stopAtAmp) {
 
 // ---- Equation class ----
 
+struct Equation::Impl {
+    std::string  m_latex;
+    EquationMode m_mode = EquationMode::Inline;
+};
+
 Equation::Equation(const std::string& latex, EquationMode mode)
-    : m_latex(latex), m_mode(mode) {}
+    : m_impl(std::make_unique<Impl>(Impl{latex, mode})) {}
+
+Equation::~Equation() = default;
+Equation::Equation(Equation&&) noexcept = default;
+Equation& Equation::operator=(Equation&&) noexcept = default;
 
 Equation& Equation::setMode(EquationMode mode) {
-    m_mode = mode;
+    m_impl->m_mode = mode;
     return *this;
 }
 
-std::string Equation::toXml() const {
-    if (m_latex.empty()) return "";
+const std::string& Equation::latex() const { return m_impl->m_latex; }
+EquationMode       Equation::mode()  const { return m_impl->m_mode; }
 
-    const char* p = m_latex.c_str();
-    const char* end = p + m_latex.size();
+std::string Equation::toXml() const {
+    if (m_impl->m_latex.empty()) return "";
+
+    const char* p = m_impl->m_latex.c_str();
+    const char* end = p + m_impl->m_latex.size();
     std::string content = parseLaTeX(p, end);
 
-    if (m_mode == EquationMode::Display) {
+    if (m_impl->m_mode == EquationMode::Display) {
         return "<m:oMathPara>"
                "<m:oMath>" + content + "</m:oMath>"
                "</m:oMathPara>";

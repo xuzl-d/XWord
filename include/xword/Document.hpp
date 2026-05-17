@@ -5,32 +5,88 @@
 #include "Image.hpp"
 #include "Equation.hpp"
 #include "Types.hpp"
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
 #include <unordered_map>
 #include <filesystem>
 
 namespace xword {
 
+// ════════════════════════════════════════════════════════════
+//  BulletList  —  bullet / ordered list container
+// ════════════════════════════════════════════════════════════
+
+/// A bullet or ordered (numbered) list.
+///
+/// Created via Document::addBulletList() or Document::addOrderedList().
+/// Items are added with addItem() and support indentation levels.
 class BulletList {
 public:
     BulletList(ListType type = ListType::Bullet);
+    ~BulletList();
+    BulletList(BulletList&&) noexcept;
+    BulletList& operator=(BulletList&&) noexcept;
 
+    /// @{
+    /// Builder methods (chainable).
+
+    /// Append an item to the list.
     BulletList& addItem(const std::string& text);
-    BulletList& setLevel(int level);
-    BulletList& setNumId(int id);
 
+    /// Set the nesting level (0 = top level).
+    BulletList& setLevel(int level);
+
+    /// Assign a numbering definition ID.
+    BulletList& setNumId(int id);
+    /// @}
+
+    /// Build OOXML list XML (internal use).
     std::string toXml() const;
-    int numId() const { return m_numId; }
+
+    /// The numbering definition ID in use.
+    int numId() const;
 
 private:
-    ListType m_type;
-    int m_level = 0;
-    int m_numId = 0; // assigned by Document, 0 = use default
-    std::vector<std::string> m_items;
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
 };
 
+// ════════════════════════════════════════════════════════════
+//  Document  —  top-level docx document builder
+// ════════════════════════════════════════════════════════════
+
+/// The central class for building a .docx document.
+///
+/// ## Programmatic mode
+///
+/// Build a document from scratch with a fluent API:
+///
+///     Document doc;
+///     doc.setPage(Page().setSize(PageSize::A4));
+///     doc.addHeading("Title", 1);
+///     doc.addParagraph("Hello world.");
+///     doc.addTable(3, 2).setStyle(TableStyle::Grid);
+///     doc.save("output.docx");
+///
+/// ## Template mode
+///
+/// Load a .docx template, fill placeholders, and save the result:
+///
+///     Document doc;
+///     doc.open("template.docx");
+///     doc.set("name", "Zhang San");
+///     doc.set("amount", 128.50);
+///     doc.save("output.docx");
+///
+/// Template syntax:
+///   - `${key}`          — variable placeholder (replaced by set() value)
+///   - `{%if key%}`      — conditional block start (standalone paragraph)
+///   - `{%else%}`        — else branch (standalone paragraph, optional)
+///   - `{%endif%}`       — conditional block end (standalone paragraph)
+///
+/// Condition keys are truthy unless the value is "false", "0", or "".
+///
 class Document {
 public:
     Document();
@@ -39,103 +95,161 @@ public:
     Document(const Document&) = delete;
     Document& operator=(const Document&) = delete;
 
-    // ---- Page settings ----
+    // ── Page settings ──────────────────────────────────────
+
+    /// Set page size, orientation, and margins.
     Document& setPage(const Page& page);
-    // Set default first-line indent for body paragraphs (chars, default fontSize 12pt)
+
+    /// Set default first-line indent for body paragraphs.
+    /// @param chars       Number of characters to indent.
+    /// @param fontSizePt  Reference font size in pt (default 12).
     Document& setDefaultParagraphIndent(double chars = 2, int fontSizePt = 12);
 
-    // ---- Heading ----
-    Document& addHeading(const std::string& text, int level); // level 1-6
-    Document& addHeadingNoNum(const std::string& text, int level); // heading without number
+    // ── Headings ───────────────────────────────────────────
+
+    /// Add a numbered heading (level 1–6).
+    Document& addHeading(const std::string& text, int level);
+
+    /// Add a heading excluded from auto-numbering.
+    Document& addHeadingNoNum(const std::string& text, int level);
+
+    /// Customise heading style for a given level.
     Document& setHeadingStyle(int level, const HeadingStyle& style);
+
+    /// Enable automatic heading numbering.
     Document& enableHeadingNumbering();
+
+    /// Disable automatic heading numbering.
     Document& disableHeadingNumbering();
+
+    /// Set heading numbering format (Decimal or Chapter).
     Document& setHeadingNumFormat(HeadingNumFormat fmt);
 
-    // ---- TOC ----
-    Document& addTOC(const std::string& levels = "1-3", const std::string& title = "");
+    // ── Table of Contents ──────────────────────────────────
 
-    // ---- Paragraph ----
+    /// Insert a TOC field.
+    /// @param levels  Outline level range, e.g. "1-3".
+    /// @param title   Optional TOC heading; if non-empty a heading is
+    ///                prepended (without numbering).
+    Document& addTOC(const std::string& levels = "1-3",
+                     const std::string& title = "");
+
+    // ── Paragraphs ─────────────────────────────────────────
+
+    /// Add a body paragraph.
+    /// @return Reference for chaining (addRun, setAlignment, …).
     Paragraph& addParagraph(const std::string& text = "");
 
-    // ---- Image ----
-    // std::string is interpreted as UTF-8; use fs::path or std::wstring for native paths.
+    // ── Images ─────────────────────────────────────────────
+
+    /// Add an image.
+    /// @return Reference for chaining (setSize, setCaption, …).
     Image& addImage(const std::string& filepath);
+
+    /// @{
+    /// Convenience overloads for various path types.
     Image& addImage(const char* filepath) { return addImage(std::string(filepath)); }
     Image& addImage(const std::filesystem::path& filepath);
     Image& addImage(const std::wstring& filepath);
     Image& addImage(const wchar_t* filepath) { return addImage(std::wstring(filepath)); }
-    Document& enableImageNumbering(const std::string& prefix = "图",
-                                   CaptionNumStyle style = CaptionNumStyle::Sequential);
+    /// @}
+
+    /// Enable automatic image caption numbering.
+    /// @param prefix  Caption prefix, e.g. "Fig." or "图".
+    /// @param style   Numbering strategy (Sequential or ByChapter).
+    Document& enableImageNumbering(
+        const std::string& prefix = "\xe5\x9b\xbe",
+        CaptionNumStyle style = CaptionNumStyle::Sequential);
+
+    /// Disable image caption numbering.
     Document& disableImageNumbering();
 
-    // ---- Table ----
+    // ── Tables ─────────────────────────────────────────────
+
+    /// Add a table with the given dimensions.
+    /// @return Reference for chaining (setStyle, setCaption, …).
     Table& addTable(int rows, int cols);
-    Document& enableTableNumbering(const std::string& prefix = "表",
-                                   CaptionNumStyle style = CaptionNumStyle::Sequential);
+
+    /// Enable automatic table caption numbering.
+    Document& enableTableNumbering(
+        const std::string& prefix = "\xe8\xa1\xa8",
+        CaptionNumStyle style = CaptionNumStyle::Sequential);
+
+    /// Disable table caption numbering.
     Document& disableTableNumbering();
 
-    // ---- Lists ----
+    // ── Lists ──────────────────────────────────────────────
+
+    /// Add a bullet (unordered) list.
     BulletList& addBulletList();
+
+    /// Add an ordered (numbered) list.
     BulletList& addOrderedList();
 
-    // ---- Equations ----
+    // ── Equations ──────────────────────────────────────────
+
+    /// Add an inline LaTeX equation (rendered as OMML).
     Equation& addEquation(const std::string& latex);
+
+    /// Add a display-style LaTeX equation (centred, on its own line).
     Equation& addDisplayEquation(const std::string& latex);
 
-    // ---- Header / Footer ----
-    // Convenience overload: a single centered text line.
+    // ── Header / Footer ───────────────────────────────────
+
+    /// Set a centred single-line page header.
     Document& setHeader(const std::string& text);
+
+    /// Set a centred single-line page footer.
     Document& setFooter(const std::string& text);
-    // Builder overload: returns a Paragraph& so callers can do rich text /
-    // page numbers / alignment, e.g.
-    //   doc.setFooter().addRun("第 ").addPageNumber()
-    //                  .addRun(" 页 / 共 ").addPageCount().addRun(" 页")
-    //                  .setAlignment(Alignment::Center);
+
+    /// Builder overload: returns a Paragraph& for rich header content.
+    /// Example:
+    ///   doc.setHeader().addRun("Chapter ").addPageNumber()
+    ///                  .setAlignment(Alignment::Center);
     Paragraph& setHeader();
+
+    /// Builder overload: returns a Paragraph& for rich footer content.
     Paragraph& setFooter();
+
+    /// Remove the page header.
     void clearHeader();
+
+    /// Remove the page footer.
     void clearFooter();
 
-    // ---- Template ----
-    // Load a .docx as a template. Its document.xml, header, footer etc. are
-    // kept verbatim. Call set() to fill placeholder values, then save() to
-    // write the rendered result.
+    // ── Template engine ────────────────────────────────────
+
+    /// Load a .docx file as a template.
+    /// @return false if the file could not be opened.
     bool open(const std::string& filepath);
 
-    // Store a template variable.  These replace ${key} placeholders and
-    // drive {%if key%} / {%else%} / {%endif%} blocks.
+    /// Store a template variable value.
     Document& set(const std::string& key, const std::string& value);
-    Document& set(const std::string& key, const char*  value) { return set(key, std::string(value)); }
+
+    /// @{
+    /// Convenience overloads for common types.
+    Document& set(const std::string& key, const char* v) { return set(key, std::string(v)); }
     Document& set(const std::string& key, bool   v) { return set(key, std::string(v ? "true" : "false")); }
     Document& set(const std::string& key, int    v) { return set(key, std::to_string(v)); }
+    /// Store a double with a specified number of decimal places.
     Document& set(const std::string& key, double v, int precision = 2);
-    template<typename T> Document& set(const std::string& key, T) = delete; // reject unsupported types
+    /// @}
 
-    // ---- Save ----
+    /// Prevent accidental implicit conversions (linker error if used).
+    template<typename T> Document& set(const std::string& key, T) = delete;
+
+    // ── Save ───────────────────────────────────────────────
+
+    /// Write the document to a .docx file.
+    /// @return true on success.
     bool save(const std::string& filepath);
 
 private:
-    enum class ElementType { Heading, Paragraph, Image, Table, BulletList, Equation, TOC };
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
 
-    struct Element {
-        ElementType type;
-        int headingLevel = 0;
-        std::string text;
-        std::string extra;     // for TOC: level range
-        bool noNumbering = false;
-        union Data {
-            Paragraph* paragraph = nullptr;
-            Image* image;
-            Table* table;
-            BulletList* bulletList;
-            Equation* equation;
-            void* ptr;
-            Data() {}
-        } data;
-    };
-
-    void buildDocumentXml(std::string& xml);
+    // ── Internal build helpers ──────────────────
+    void        buildDocumentXml(std::string& xml);
     std::string buildRelationshipsXml();
     std::string buildContentTypesXml();
     std::string buildNumberingXml();
@@ -143,37 +257,8 @@ private:
     std::string buildHeadingNumberingXml();
     std::string buildHeaderXml();
     std::string buildFooterXml();
-
-    Page m_page;
-    std::vector<std::unique_ptr<Paragraph>> m_paragraphs;
-    std::vector<std::unique_ptr<Image>> m_images;
-    std::vector<std::unique_ptr<Table>> m_tables;
-    std::vector<std::unique_ptr<BulletList>> m_lists;
-    std::vector<std::unique_ptr<Equation>> m_equations;
-
-    std::vector<Element> m_elements;
-
-    HeadingStyle m_headingStyles[6];
-    bool m_headingNumbering = false;
-    HeadingNumFormat m_headingNumFormat = HeadingNumFormat::Decimal;
-    int m_nextOrderedListId = 3;
-    int m_defaultIndent = 480;
-    bool m_imageNumbering = false;
-    std::string m_imageNumPrefix = "图";
-    CaptionNumStyle m_imageNumStyle = CaptionNumStyle::Sequential;
-    bool m_tableNumbering = false;
-    std::string m_tableNumPrefix = "表";
-    CaptionNumStyle m_tableNumStyle = CaptionNumStyle::Sequential;
-    std::unique_ptr<Paragraph> m_header;
-    std::unique_ptr<Paragraph> m_footer;
-
-    // Template state
-    bool m_isTemplate = false;
-    std::unordered_map<std::string, std::string> m_templateParts;    // zip entry → data
-    std::unordered_map<std::string, std::string> m_templateVars;
-
     std::string renderXml(const std::string& xml);
-    bool saveTemplate(const std::string& filepath);
+    bool        saveTemplate(const std::string& filepath);
 };
 
 } // namespace xword

@@ -4,108 +4,113 @@
 
 namespace xword {
 
-enum class Alignment {
-    Left,
-    Center,
-    Right,
-    Justify
-};
+// ── Enums ────────────────────────────────────────────────
 
-enum class TableStyle {
-    None,
-    Grid,
-    Light,
-};
+/// Paragraph / heading alignment.
+enum class Alignment { Left, Center, Right, Justify };
 
-enum class PageSize {
-    A4,
-    Letter,
-};
+/// Table border style.
+enum class TableStyle { None, Grid, Light };
 
-enum class Orientation {
-    Portrait,
-    Landscape,
-};
+/// Page size presets.
+enum class PageSize { A4, Letter };
 
-enum class ListType {
-    Bullet,
-    Ordered,
-};
+/// Page orientation.
+enum class Orientation { Portrait, Landscape };
 
+/// List kind (bullet or numbered).
+enum class ListType { Bullet, Ordered };
+
+/// Heading numbering format.
 enum class HeadingNumFormat {
-    Decimal,     // 1, 1.1, 1.1.1
-    Chapter,     // 第1章, 1.1, 1.1.1
+    Decimal,     ///< 1, 1.1, 1.1.1
+    Chapter,     ///< 第 1 章, 1.1, 1.1.1
 };
 
+/// LaTeX equation rendering mode.
+enum class EquationMode {
+    Inline,      ///< Inline math: m:oMath
+    Display      ///< Display math: m:oMathPara
+};
+
+/// Caption numbering strategy for images and tables.
 enum class CaptionNumStyle {
-    Sequential,  // 1, 2, 3, ...
-    ByChapter,   // 1-1, 1-2, 2-1, ... (chapter from H1)
+    Sequential,  ///< Global 1, 2, 3, …
+    ByChapter,   ///< Per-chapter: 1-1, 1-2, 2-1, … (H1 triggers chapter increment)
 };
 
+// ── Value types ──────────────────────────────────────────
+
+/// Page margin dimensions (cm).
 struct PageMargins {
-    double top = 2.54;     // cm
-    double bottom = 2.54;  // cm
-    double left = 2.54;    // cm
-    double right = 2.54;   // cm
+    double top    = 2.54;
+    double bottom = 2.54;
+    double left   = 2.54;
+    double right  = 2.54;
 };
 
+/// Page layout descriptor.
 struct Page {
-    PageSize size = PageSize::A4;
-    Orientation orientation = Orientation::Portrait;
-    PageMargins margins;
+    PageSize     size        = PageSize::A4;
+    Orientation  orientation = Orientation::Portrait;
+    PageMargins  margins;
 
-    Page& setSize(PageSize s) { size = s; return *this; }
-    Page& setOrientation(Orientation o) { orientation = o; return *this; }
+    Page& setSize(PageSize s)               { size = s; return *this; }
+    Page& setOrientation(Orientation o)     { orientation = o; return *this; }
     Page& setMargins(double top, double bottom, double left, double right) {
         margins = PageMargins{top, bottom, left, right};
         return *this;
     }
 };
 
+/// Heading style definition.
 struct HeadingStyle {
-    std::string font;           // font name, empty = default
-    int fontSize = 0;           // pt, 0 = auto (44/36/30/28/26/24 for H1-H6)
-    bool bold = true;
-    bool italic = false;
-    std::string color;          // hex RRGGBB, empty = auto
-    double lineSpacing = 0;     // e.g. 1.5 for 1.5 line spacing, 0 = default
-    double spaceBefore = -1;    // pt, -1 = use default
-    double spaceAfter = -1;     // pt, -1 = use default
+    std::string font;           ///< Font name (empty = default).
+    int    fontSize     = 0;    ///< pt, 0 = auto (44/36/30/28/26/24 for H1–H6).
+    bool   bold         = true;
+    bool   italic       = false;
+    std::string color;          ///< Hex RRGGBB (empty = auto).
+    double lineSpacing  = 0;    ///< e.g. 1.5 for 1.5×, 0 = default.
+    double spaceBefore  = -1;   ///< pt, -1 = use default.
+    double spaceAfter   = -1;   ///< pt, -1 = use default.
     Alignment alignment = Alignment::Left;
-    bool hasAlignment = false;
+    bool   hasAlignment = false;
 
-    HeadingStyle& setFont(const std::string& f)      { font = f; return *this; }
-    HeadingStyle& setFontSize(int pt)                 { fontSize = pt; return *this; }
-    HeadingStyle& setBold(bool b = true)              { bold = b; return *this; }
-    HeadingStyle& setItalic(bool i = true)            { italic = i; return *this; }
-    HeadingStyle& setColor(const std::string& c)      { color = c; return *this; }
-    HeadingStyle& setLineSpacing(double ls)           { lineSpacing = ls; return *this; }
-    HeadingStyle& setSpaceBefore(double sb)           { spaceBefore = sb; return *this; }
-    HeadingStyle& setSpaceAfter(double sa)            { spaceAfter = sa; return *this; }
-    HeadingStyle& setAlignment(Alignment a)           { alignment = a; hasAlignment = true; return *this; }
+    HeadingStyle& setFont(const std::string& f)    { font = f; return *this; }
+    HeadingStyle& setFontSize(int pt)              { fontSize = pt; return *this; }
+    HeadingStyle& setBold(bool b = true)           { bold = b; return *this; }
+    HeadingStyle& setItalic(bool i = true)         { italic = i; return *this; }
+    HeadingStyle& setColor(const std::string& c)   { color = c; return *this; }
+    HeadingStyle& setLineSpacing(double ls)        { lineSpacing = ls; return *this; }
+    HeadingStyle& setSpaceBefore(double sb)        { spaceBefore = sb; return *this; }
+    HeadingStyle& setSpaceAfter(double sa)         { spaceAfter = sa; return *this; }
+    HeadingStyle& setAlignment(Alignment a)        { alignment = a; hasAlignment = true; return *this; }
 };
 
+// ── Helpers ──────────────────────────────────────────────
+
+/// Convert Alignment enum to OOXML string.
 inline std::string alignmentToString(Alignment a) {
     switch (a) {
-        case Alignment::Left:   return "left";
-        case Alignment::Center: return "center";
-        case Alignment::Right:  return "right";
-        case Alignment::Justify:return "both";
+        case Alignment::Left:    return "left";
+        case Alignment::Center:  return "center";
+        case Alignment::Right:   return "right";
+        case Alignment::Justify: return "both";
     }
     return "left";
 }
 
+/// Page width in twips for given size and orientation.
 inline int pageWidthDxa(PageSize s, Orientation o) {
-    if (o == Orientation::Landscape) {
+    if (o == Orientation::Landscape)
         return s == PageSize::A4 ? 16838 : 15840;
-    }
     return s == PageSize::A4 ? 11906 : 12240;
 }
 
+/// Page height in twips for given size and orientation.
 inline int pageHeightDxa(PageSize s, Orientation o) {
-    if (o == Orientation::Landscape) {
+    if (o == Orientation::Landscape)
         return s == PageSize::A4 ? 11906 : 12240;
-    }
     return s == PageSize::A4 ? 16838 : 15840;
 }
 

@@ -2,58 +2,73 @@
 
 #include "Run.hpp"
 #include "Types.hpp"
-#include <string>
-#include <vector>
 #include <memory>
+#include <string>
 
 namespace xword {
 
+/// A document paragraph composed of text runs, equations, and fields.
+///
+/// Paragraphs are created through Document::addParagraph() or
+/// Table::cell().addParagraph().  The returned reference supports
+/// method chaining for building rich content inline:
+///
+///     doc.addParagraph()
+///        .addRun("Bold ", RunStyle().bold())
+///        .addRun("Normal")
+///        .setAlignment(Alignment::Center);
+///
 class Paragraph {
 public:
-    Paragraph() = default;
+    Paragraph();
+    ~Paragraph();
+    Paragraph(Paragraph&&) noexcept;
+    Paragraph& operator=(Paragraph&&) noexcept;
 
-    // Add a simple text run
+    /// @{
+    /// Add content runs (chainable).
+
+    /// Add a plain-text run.
     Paragraph& addRun(const std::string& text);
 
-    // Add a text run with style
+    /// Add a styled text run.
     Paragraph& addRun(const std::string& text, const RunStyle& style);
 
-    // Add an inline LaTeX equation run (mixed with text)
+    /// Add an inline LaTeX equation run.
     Paragraph& addEquation(const std::string& latex);
 
-    // Insert a Word PAGE field (current page number).
+    /// Insert a Word `PAGE` field (current page number).
     Paragraph& addPageNumber();
-    // Insert a Word NUMPAGES field (total page count).
-    Paragraph& addPageCount();
 
-    // Set paragraph alignment
+    /// Insert a Word `NUMPAGES` field (total page count).
+    Paragraph& addPageCount();
+    /// @}
+
+    /// @{
+    /// Paragraph formatting (chainable).
+
+    /// Horizontal alignment.
     Paragraph& setAlignment(Alignment align);
 
-    // Set first-line indent (twips, 1pt = 20 twips, ~480 = 2 chars at 12pt)
+    /// First-line indent in twips (1 pt = 20 twips).
     Paragraph& setFirstLineIndent(int twips);
+
+    /// First-line indent in characters (default font size 12 pt).
     Paragraph& setFirstLineIndentChars(double chars, int fontSizePt = 12);
 
-    // Set paragraph spacing (twips, 1pt = 20 twips)
+    /// Spacing after paragraph in twips (-1 = inherit from style).
     Paragraph& setSpacingAfter(int twips);
-    Paragraph& setSpacingBefore(int twips);
 
-    // Internal: build XML for this paragraph
+    /// Spacing before paragraph in twips (-1 = inherit from style).
+    Paragraph& setSpacingBefore(int twips);
+    /// @}
+
+    /// Build OOXML paragraph XML (internal use).
     std::string toXml() const;
 
 private:
-    enum RunKind { Text, InlineEquation, PageField, NumPagesField };
-
-    struct RunEntry {
-        std::string content;
-        RunStyle style;
-        RunKind kind = Text;
-    };
-    std::vector<RunEntry> m_runs;
-    Alignment m_alignment = Alignment::Left;
-    bool m_hasAlignment = false;
-    int m_firstLineIndent = -1;
-    int m_spacingAfter = -1;  // -1 = inherit
-    int m_spacingBefore = -1; // -1 = inherit
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
 };
 
 } // namespace xword

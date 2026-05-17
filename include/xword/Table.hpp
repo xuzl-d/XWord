@@ -2,96 +2,146 @@
 
 #include "Paragraph.hpp"
 #include "Types.hpp"
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
 #include <filesystem>
 
 namespace xword {
 
+/// Descriptor for an image placed inside a table cell.
 struct CellImage {
     std::string filepath;
-    int width = 0;
-    int height = 0;
-    std::string rId;      // assigned by Document during save
+    int  width  = 0;
+    int  height = 0;
+    std::string rId;       ///< Relationship ID assigned during save.
     std::string caption;
-    bool skipped = false; // true when source file is missing/unreadable
+    bool skipped = false;  ///< True if the source file was missing.
 
     CellImage& setCaption(const std::string& cap) { caption = cap; return *this; }
 };
 
+/// A single table cell.
+///
+/// Each cell may contain paragraphs (text, equations) and images.
+/// Cells are accessed through Table::cell().
 class Cell {
 public:
-    Cell() = default;
+    Cell();
+    ~Cell();
+    Cell(Cell&&) noexcept;
+    Cell& operator=(Cell&&) noexcept;
 
+    /// @{
+    /// Add content to the cell (chainable).
+
+    /// Add a plain paragraph.
     Paragraph& addParagraph(const std::string& text = "");
+
+    /// Add a paragraph with an initial styled run.
     Paragraph& addParagraph(const std::string& text, const RunStyle& style);
 
-    // Convenience: add inline equation directly
+    /// Add a paragraph containing an inline equation.
     Paragraph& addEquation(const std::string& latex);
 
-    // Add an image to this cell.
-    // std::string is interpreted as UTF-8; use fs::path or std::wstring for native paths.
+    /// Add an image (returns CellImage& for optional caption chaining).
     CellImage& addImage(const std::string& filepath);
     CellImage& addImage(const std::string& filepath, int width, int height);
+
+    /// @{
+    /// Convenience overloads accepting various path types.
     CellImage& addImage(const char* filepath) { return addImage(std::string(filepath)); }
-    CellImage& addImage(const char* filepath, int width, int height) { return addImage(std::string(filepath), width, height); }
+    CellImage& addImage(const char* filepath, int w, int h) { return addImage(std::string(filepath), w, h); }
     CellImage& addImage(const std::filesystem::path& filepath);
     CellImage& addImage(const std::filesystem::path& filepath, int width, int height);
     CellImage& addImage(const std::wstring& filepath);
     CellImage& addImage(const std::wstring& filepath, int width, int height);
     CellImage& addImage(const wchar_t* filepath) { return addImage(std::wstring(filepath)); }
-    CellImage& addImage(const wchar_t* filepath, int width, int height) { return addImage(std::wstring(filepath), width, height); }
+    CellImage& addImage(const wchar_t* filepath, int w, int h) { return addImage(std::wstring(filepath), w, h); }
+    /// @}
+    /// @}
 
-    void setVMerge(const std::string& v) { m_vMerge = v; }
-    void setGridSpan(int span) { m_gridSpan = span; }
-    void setHidden(bool h) { m_hidden = h; }
-    const std::string& vMerge() const { return m_vMerge; }
-    int gridSpan() const { return m_gridSpan; }
-    bool hidden() const { return m_hidden; }
+    /// @{
+    /// Merge-related properties (set by Table::mergeCells).
 
-    const std::vector<std::unique_ptr<Paragraph>>& paragraphs() const { return m_paragraphs; }
-    const std::vector<CellImage>& images() const { return m_images; }
-    std::vector<CellImage>& images() { return m_images; }
+    /// Vertical merge state: "restart" or "continue".
+    void setVMerge(const std::string& v);
+    /// Horizontal grid span (number of columns this cell occupies).
+    void setGridSpan(int span);
+    /// Mark cell as hidden (covered by a span).
+    void setHidden(bool h);
+
+    const std::string& vMerge()    const;
+    int  gridSpan() const;
+    bool hidden()   const;
+    /// @}
+
+    /// @{
+    /// Read access to cell contents (internal use).
+    const std::vector<std::unique_ptr<Paragraph>>& paragraphs() const;
+    const std::vector<CellImage>& images() const;
+    std::vector<CellImage>& images();
+    /// @}
 
 private:
-    std::vector<std::unique_ptr<Paragraph>> m_paragraphs;
-    std::vector<CellImage> m_images;
-    std::string m_vMerge;
-    int m_gridSpan = 0;
-    bool m_hidden = false;
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
 };
 
+/// A table with a fixed number of rows and columns.
+///
+/// Created via Document::addTable(rows, cols).  Supports header rows,
+/// cell merging, grid borders, and automatic caption numbering.
 class Table {
 public:
     Table(int rows, int cols);
+    ~Table();
+    Table(Table&&) noexcept;
+    Table& operator=(Table&&) noexcept;
 
+    /// @{
+    /// Table properties (chainable).
+
+    /// Designate a header row (repeated across page breaks).
     Table& setHeaderRow(int row);
+
+    /// Border style preset.
     Table& setStyle(TableStyle style);
-    Table& setCaption(const std::string& cap) { m_caption = cap; return *this; }
-    const std::string& caption() const { return m_caption; }
 
-    Cell& cell(int row, int col);
+    /// Caption text shown above the table.
+    Table& setCaption(const std::string& cap);
+    const std::string& caption() const;
+    /// @}
+
+    /// @{
+    /// Cell access (0-based indices).
+
+    /// Mutable cell reference.
+    Cell&       cell(int row, int col);
+    /// Immutable cell reference.
     const Cell& cell(int row, int col) const;
+    /// @}
 
+    /// Merge a rectangular region of cells.
+    /// @param row1, col1  Top-left corner (inclusive).
+    /// @param row2, col2  Bottom-right corner (inclusive).
     Table& mergeCells(int row1, int col1, int row2, int col2);
 
-    int rows() const { return m_rows; }
-    int cols() const { return m_cols; }
+    /// @name Dimensions
+    /// @{
+    int rows() const;
+    int cols() const;
+    /// @}
 
-    // Internal
+    /// Build OOXML table XML (internal use).
     std::string toXml() const;
 
-    // Collect all cell images for registration
+    /// Collect image pointers from all cells for registration (internal use).
     void collectCellImages(std::vector<CellImage*>& images);
 
 private:
-    int m_rows;
-    int m_cols;
-    int m_headerRow = -1;
-    TableStyle m_style = TableStyle::None;
-    std::string m_caption;
-    std::vector<std::vector<Cell>> m_cells;
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
 };
 
 } // namespace xword
