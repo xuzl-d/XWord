@@ -204,6 +204,8 @@ int main() {
     doc.addDisplayEquation("E = mc^2");
     doc.addDisplayEquation("\\sum_{i=1}^{n} x_i = x_1 + x_2 + \\cdots + x_n");
     doc.addDisplayEquation("\\int_{0}^{\\infty} e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}");
+    doc.addDisplayEquation("f(x,y,z) = 3y^2z(3 + \\frac{ 7x + 5 }{1 + y^2})");
+    doc.addDisplayEquation("f(x,y,z) = 3y^2z(3+\\frac{7x+5}{\\sqrt{1+{\\sqrt[y]{t_{v}^{2}}}^2}})\\sum_{i=0 }^{i=n}(i^2+2y_{2\\sin(i)}^{i+y})");
 
     // printf-style helper: inject computed values into a LaTeX template
     // without {{}} escaping noise.

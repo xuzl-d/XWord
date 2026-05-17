@@ -73,6 +73,13 @@ if(XWORD_BUILD_TESTS)
         target_compile_options(xword_test PRIVATE /utf-8 /wd4996)
     endif()
     add_test(NAME xword_test COMMAND xword_test)
+
+    add_executable(xword_test_eq tests/test_eq_dump.cpp)
+    target_link_libraries(xword_test_eq PRIVATE xword)
+    if(MSVC)
+        target_compile_options(xword_test_eq PRIVATE /utf-8 /wd4996)
+    endif()
+    add_test(NAME xword_test_eq COMMAND xword_test_eq)
 endif()
 
 # ---- Install (clean redistributable layout) ----
