@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <unordered_map>
 
 namespace xword {
 namespace internal {
@@ -24,6 +25,9 @@ private:
     Impl* m_impl;
     std::string m_filepath;
 };
+
+// Read all entries from a ZIP file. Returns empty map on failure.
+std::unordered_map<std::string, std::string> readZip(const std::string& filepath);
 
 // Escape XML special chars in text content
 std::string xmlEscape(const std::string& text);

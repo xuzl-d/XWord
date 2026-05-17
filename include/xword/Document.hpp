@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <unordered_map>
 #include <filesystem>
 
 namespace xword {
@@ -96,6 +97,21 @@ public:
     void clearHeader();
     void clearFooter();
 
+    // ---- Template ----
+    // Load a .docx as a template. Its document.xml, header, footer etc. are
+    // kept verbatim. Call set() to fill placeholder values, then save() to
+    // write the rendered result.
+    bool open(const std::string& filepath);
+
+    // Store a template variable.  These replace ${key} placeholders and
+    // drive {%if key%} / {%else%} / {%endif%} blocks.
+    Document& set(const std::string& key, const std::string& value);
+    Document& set(const std::string& key, const char*  value) { return set(key, std::string(value)); }
+    Document& set(const std::string& key, bool   v) { return set(key, std::string(v ? "true" : "false")); }
+    Document& set(const std::string& key, int    v) { return set(key, std::to_string(v)); }
+    Document& set(const std::string& key, double v, int precision = 2);
+    template<typename T> Document& set(const std::string& key, T) = delete; // reject unsupported types
+
     // ---- Save ----
     bool save(const std::string& filepath);
 
@@ -150,6 +166,14 @@ private:
     CaptionNumStyle m_tableNumStyle = CaptionNumStyle::Sequential;
     std::unique_ptr<Paragraph> m_header;
     std::unique_ptr<Paragraph> m_footer;
+
+    // Template state
+    bool m_isTemplate = false;
+    std::unordered_map<std::string, std::string> m_templateParts;    // zip entry → data
+    std::unordered_map<std::string, std::string> m_templateVars;
+
+    std::string renderXml(const std::string& xml);
+    bool saveTemplate(const std::string& filepath);
 };
 
 } // namespace xword

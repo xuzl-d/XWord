@@ -1,5 +1,6 @@
 ﻿#include "xword/Document.hpp"
 #include "internal/ZipWriter.hpp"
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -881,6 +882,9 @@ std::string Document::buildContentTypesXml() {
 }
 
 bool Document::save(const std::string& filepath) {
+    if (m_isTemplate)
+        return saveTemplate(filepath);
+
     try {
         namespace fs = std::filesystem;
 
@@ -975,6 +979,214 @@ bool Document::save(const std::string& filepath) {
             std::string mediaPath = "media/" + fs::u8path(cimg->filepath).filename().u8string();
             if (!zip.addFileEntry("word/" + mediaPath, cimg->filepath)) {
                 return false;
+            }
+        }
+
+        zip.finalize();
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+// ================================================================
+//  Template engine helpers
+// ================================================================
+
+namespace {
+
+// Trim whitespace from both ends.
+std::string trim(const std::string& s) {
+    size_t b = 0;
+    while (b < s.size() && (s[b] == ' ' || s[b] == '\t' || s[b] == '\r' || s[b] == '\n')) ++b;
+    size_t e = s.size();
+    while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\r' || s[e - 1] == '\n')) --e;
+    return s.substr(b, e - b);
+}
+
+struct Marker {
+    size_t pStart = 0;  // <w:p position in body
+    size_t pEnd = 0;    // position after </w:p>
+    std::string kind;   // "if", "else", "endif"
+    std::string key;    // for "if" only
+};
+
+// Find all template markers in body XML and return sorted by position.
+std::vector<Marker> findMarkers(const std::string& body) {
+    std::vector<Marker> out;
+    std::string patterns[] = {"{%if ", "{%else%}", "{%endif%}"};
+    std::string kinds[]   = {"if",     "else",   "endif"};
+
+    for (int pi = 0; pi < 3; ++pi) {
+        const auto& pat = patterns[pi];
+        const auto& kind = kinds[pi];
+
+        size_t pos = 0;
+        while ((pos = body.find(pat, pos)) != std::string::npos) {
+            // Locate enclosing <w:p> — search backwards for the last <w:p
+            // that is not a <w:pPr.
+            size_t search = pos;
+            size_t pStart = std::string::npos;
+            while (search > 0) {
+                pStart = body.rfind("<w:p", search);
+                if (pStart == std::string::npos) break;
+                // distinguish <w:p (para) from <w:pPr (para properties)
+                if (pStart + 5 <= body.size() && body[pStart + 4] == 'P') {
+                    search = pStart - 1;
+                    continue; // skip <w:pPr
+                }
+                break;
+            }
+            if (pStart == std::string::npos) { pos++; continue; }
+
+            size_t pEnd = body.find("</w:p>", pos);
+            if (pEnd == std::string::npos) { pos++; continue; }
+            pEnd += 6;
+
+            std::string key;
+            if (kind == "if") {
+                // {%if  KEY  %}   extract KEY, strip whitespace
+                size_t keyBeg = pos + pat.size();
+                size_t keyEnd = body.find("%}", keyBeg);
+                if (keyEnd != std::string::npos)
+                    key = trim(body.substr(keyBeg, keyEnd - keyBeg));
+            }
+
+            out.push_back({pStart, pEnd, kind, key});
+            pos = pEnd;
+        }
+    }
+
+    std::sort(out.begin(), out.end(),
+        [](const Marker& a, const Marker& b) { return a.pStart < b.pStart; });
+    return out;
+}
+
+bool isTruthy(const std::string& v) {
+    return !v.empty() && v != "false" && v != "0";
+}
+
+// Replace ${key} placeholders in a string.
+std::string replaceVars(const std::string& s,
+     const std::unordered_map<std::string, std::string>& vars)
+{
+    std::string r = s;
+    for (auto it = vars.begin(); it != vars.end(); ++it) {
+        std::string ph = "${" + it->first + "}";
+        size_t p = 0;
+        while ((p = r.find(ph, p)) != std::string::npos) {
+            r.replace(p, ph.size(), it->second);
+            p += it->second.size();
+        }
+    }
+    return r;
+}
+
+} // anonymous namespace
+
+// ================================================================
+//  Document template API
+// ================================================================
+
+bool Document::open(const std::string& filepath) {
+    auto parts = internal::readZip(filepath);
+    if (parts.empty()) return false;
+    m_templateParts = std::move(parts);
+    m_isTemplate = true;
+    m_templateVars.clear();
+    return true;
+}
+
+Document& Document::set(const std::string& key, const std::string& value) {
+    m_templateVars[key] = value;
+    return *this;
+}
+
+Document& Document::set(const std::string& key, double v, int precision) {
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.*f", precision, v);
+    return set(key, std::string(buf));
+}
+
+std::string Document::renderXml(const std::string& xml) {
+    // Locate <w:body> … </w:body>
+    size_t bodyTag = xml.find("<w:body>");
+    size_t bodyEnd = xml.find("</w:body>");
+    if (bodyTag == std::string::npos || bodyEnd == std::string::npos)
+        return replaceVars(xml, m_templateVars); // simple fallback for headers
+
+    std::string prefix = xml.substr(0, bodyTag + 9);
+    std::string body   = xml.substr(bodyTag + 9, bodyEnd - (bodyTag + 9));
+    std::string suffix = xml.substr(bodyEnd);
+
+    // 1. Process conditionals
+    auto markers = findMarkers(body);
+
+    std::string bodyOut;
+    size_t pos = 0;
+    enum { Normal, IfTrue, IfFalse } state = Normal;
+
+    for (const auto& m : markers) {
+        // Emit content between previous position and this marker
+        if (state != IfFalse)
+            bodyOut += body.substr(pos, m.pStart - pos);
+
+        if (m.kind == "if") {
+            if (state != Normal)
+                throw std::runtime_error("nested {%if%} is not supported");
+            state = isTruthy(
+                m_templateVars.count(m.key) ? m_templateVars.at(m.key) : "")
+                ? IfTrue : IfFalse;
+        } else if (m.kind == "else") {
+            if (state == Normal)
+                throw std::runtime_error("{%else%} without {%if%}");
+            state = (state == IfTrue) ? IfFalse : IfTrue;
+        } else { // endif
+            if (state == Normal)
+                throw std::runtime_error("{%endif%} without {%if%}");
+            state = Normal;
+        }
+        pos = m.pEnd;
+    }
+
+    if (state != Normal)
+        throw std::runtime_error("unclosed {%if%} block");
+
+    if (state != IfFalse)
+        bodyOut += body.substr(pos);
+
+    // 2. Replace ${key} variables in surviving XML.
+    //    Simple string substitution is safe because ${key} appears only
+    //    in <w:t> text content, never in XML tags or attributes.
+    bodyOut = replaceVars(bodyOut, m_templateVars);
+
+    return prefix + bodyOut + suffix;
+}
+
+bool Document::saveTemplate(const std::string& filepath) {
+    try {
+        ZipWriter zip(filepath);
+
+        // Process document.xml if present
+        std::string docXml;
+        if (m_templateParts.count("word/document.xml")) {
+            docXml = m_templateParts["word/document.xml"];
+            docXml = renderXml(docXml);
+        }
+
+        // Write all parts back (explicit iterators — structured bindings
+        // may crash on v141 toolset).
+        for (auto it = m_templateParts.begin(); it != m_templateParts.end(); ++it) {
+            const std::string& name = it->first;
+            std::string& data = it->second;
+            if (name == "word/document.xml") {
+                zip.addEntry(name, docXml);
+            } else if (name == "word/header1.xml") {
+                zip.addEntry(name, renderXml(data));
+            } else if (name == "word/footer1.xml") {
+                zip.addEntry(name, renderXml(data));
+            } else {
+                zip.addEntry(name, data);
             }
         }
 

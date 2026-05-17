@@ -29,6 +29,7 @@ add_library(xword SHARED
     src/Image.cpp
     src/Equation.cpp
     src/internal/ZipWriter.cpp
+    src/internal/ZipReader.cpp
 )
 target_include_directories(xword
     PUBLIC
@@ -53,6 +54,12 @@ if(XWORD_BUILD_EXAMPLES)
     target_link_libraries(xword_demo PRIVATE xword)
     if(MSVC)
         target_compile_options(xword_demo PRIVATE /utf-8 /wd4996)
+    endif()
+
+    add_executable(xword_demo_template examples/demo_template.cpp)
+    target_link_libraries(xword_demo_template PRIVATE xword)
+    if(MSVC)
+        target_compile_options(xword_demo_template PRIVATE /utf-8 /wd4996)
     endif()
 endif()
 
