@@ -24,6 +24,7 @@ set_target_properties(miniz PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # ---- XWord shared library ----
 add_library(xword SHARED
     src/Document.cpp
+    src/BulletList.cpp
     src/Paragraph.cpp
     src/Table.cpp
     src/Image.cpp
