@@ -39,6 +39,14 @@ enum class CaptionNumStyle {
     ByChapter,   ///< Per-chapter: 1-1, 1-2, 2-1, … (H1 triggers chapter increment)
 };
 
+/// Section break type (corresponds to ST_SectionMark in ECMA-376 §17.18.77).
+enum class SectionBreakType {
+    NextPage,     ///< New section starts on the following page (default).
+    Continuous,   ///< New section starts on the same page.
+    EvenPage,     ///< New section starts on the next even-numbered page.
+    OddPage,      ///< New section starts on the next odd-numbered page.
+};
+
 // ── Value types ──────────────────────────────────────────
 
 /// Page margin dimensions (cm).
@@ -98,6 +106,17 @@ inline std::string alignmentToString(Alignment a) {
         case Alignment::Justify: return "both";
     }
     return "left";
+}
+
+/// Convert SectionBreakType enum to OOXML string.
+inline std::string sectionBreakTypeToString(SectionBreakType t) {
+    switch (t) {
+        case SectionBreakType::NextPage:   return "nextPage";
+        case SectionBreakType::Continuous: return "continuous";
+        case SectionBreakType::EvenPage:   return "evenPage";
+        case SectionBreakType::OddPage:    return "oddPage";
+    }
+    return "nextPage";
 }
 
 /// Page width in twips for given size and orientation.

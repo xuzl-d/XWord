@@ -42,6 +42,10 @@ public:
 
     /// Insert a Word `NUMPAGES` field (total page count).
     Paragraph& addPageCount();
+
+    /// Insert a footnote reference mark (superscript number linking to
+    /// the footnote whose content was added via Document::addFootnote).
+    Paragraph& addFootnoteRef(int footnoteId);
     /// @}
 
     /// @{

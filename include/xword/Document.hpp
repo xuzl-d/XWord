@@ -148,6 +148,23 @@ public:
     /// Add an ordered (numbered) list.
     BulletList& addOrderedList();
 
+    // ── Sections ──────────────────────────────────────────
+
+    /// Insert a section break. Elements after this call belong to a new
+    /// section that inherits the current section's page settings.
+    /// Call setPage() / setHeader() / setFooter() afterwards to customise
+    /// the new section.
+    Document& addSectionBreak(SectionBreakType type = SectionBreakType::NextPage);
+
+    /// Enable different first page header/footer for the current section.
+    Document& enableTitlePage();
+
+    // ── Footnotes ─────────────────────────────────────────
+
+    /// Add a footnote with the given text and return its ID.
+    /// Use Paragraph::addFootnoteRef(id) to place the reference mark in text.
+    int addFootnote(const std::string& text);
+
     // ── Equations ──────────────────────────────────────────
 
     /// Add an inline LaTeX equation (rendered as OMML).
@@ -217,6 +234,7 @@ private:
     std::string buildNumberingXml();
     std::string buildStylesXml();
     std::string buildHeadingNumberingXml();
+    std::string buildFootnotesXml();
     std::string buildHeaderXml();
     std::string buildFooterXml();
     std::string renderXml(const std::string& xml);

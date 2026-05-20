@@ -210,6 +210,7 @@ std::string Table::toXml() const {
                "</w:tblBorders>";
     }
     xml += "<w:tblW w:w=\"5000\" w:type=\"pct\"/>";
+    xml += "<w:jc w:val=\"center\"/>";
     xml += "</w:tblPr>";
 
     xml += "<w:tblGrid>";

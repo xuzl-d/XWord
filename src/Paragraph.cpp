@@ -4,7 +4,7 @@
 
 namespace xword {
 
-enum class RunKind { Text, InlineEquation, PageField, NumPagesField };
+enum class RunKind { Text, InlineEquation, PageField, NumPagesField, FootnoteRef };
 
 struct RunEntry {
     std::string content;
@@ -50,6 +50,11 @@ Paragraph& Paragraph::addPageNumber() {
 
 Paragraph& Paragraph::addPageCount() {
     m_impl->m_runs.push_back({"", RunStyle(), RunKind::NumPagesField});
+    return *this;
+}
+
+Paragraph& Paragraph::addFootnoteRef(int footnoteId) {
+    m_impl->m_runs.push_back({std::to_string(footnoteId), RunStyle(), RunKind::FootnoteRef});
     return *this;
 }
 
@@ -104,6 +109,11 @@ std::string Paragraph::toXml() const {
         if (run.kind == RunKind::InlineEquation) {
             std::string eqXml = Equation(run.content, EquationMode::Inline).toXml();
             xml += "<w:r>" + eqXml + "</w:r>";
+        } else if (run.kind == RunKind::FootnoteRef) {
+            xml += "<w:r>"
+                   "<w:rPr><w:rStyle w:val=\"FootnoteReference\"/></w:rPr>"
+                   "<w:footnoteReference w:id=\"" + xmlEscape(run.content) + "\"/>"
+                   "</w:r>";
         } else if (run.kind == RunKind::PageField || run.kind == RunKind::NumPagesField) {
             const char* instr = (run.kind == RunKind::PageField) ? " PAGE " : " NUMPAGES ";
             xml += "<w:r><w:fldChar w:fldCharType=\"begin\"/></w:r>"
