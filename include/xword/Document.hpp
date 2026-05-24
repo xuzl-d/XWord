@@ -71,9 +71,11 @@ public:
 
     /// Add a numbered heading (level 1–6).
     Document& addHeading(const std::string& text, int level);
+    Document& addHeading(const std::wstring& text, int level);
 
     /// Add a heading excluded from auto-numbering.
     Document& addHeadingNoNum(const std::string& text, int level);
+    Document& addHeadingNoNum(const std::wstring& text, int level);
 
     /// Customise heading style for a given level.
     Document& setHeadingStyle(int level, const HeadingStyle& style);
@@ -95,12 +97,14 @@ public:
     ///                prepended (without numbering).
     Document& addTOC(const std::string& levels = "1-3",
                      const std::string& title = "");
+    Document& addTOC(const std::wstring& levels, const std::wstring& title);
 
     // ── Paragraphs ─────────────────────────────────────────
 
     /// Add a body paragraph.
     /// @return Reference for chaining (addRun, setAlignment, …).
     Paragraph& addParagraph(const std::string& text = "");
+    Paragraph& addParagraph(const std::wstring& text);
 
     // ── Images ─────────────────────────────────────────────
 

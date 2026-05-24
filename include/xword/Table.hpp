@@ -19,6 +19,7 @@ struct CellImage {
     bool skipped = false;  ///< True if the source file was missing.
 
     CellImage& setCaption(const std::string& cap) { caption = cap; return *this; }
+    CellImage& setCaption(const std::wstring& cap);
 };
 
 /// A single table cell.
@@ -37,12 +38,15 @@ public:
 
     /// Add a plain paragraph.
     Paragraph& addParagraph(const std::string& text = "");
+    Paragraph& addParagraph(const std::wstring& text);
 
     /// Add a paragraph with an initial styled run.
     Paragraph& addParagraph(const std::string& text, const RunStyle& style);
+    Paragraph& addParagraph(const std::wstring& text, const RunStyle& style);
 
     /// Add a paragraph containing an inline equation.
     Paragraph& addEquation(const std::string& latex);
+    Paragraph& addEquation(const std::wstring& latex);
 
     /// Add an image (returns CellImage& for optional caption chaining).
     CellImage& addImage(const std::string& filepath);
@@ -110,6 +114,7 @@ public:
 
     /// Caption text shown above the table.
     Table& setCaption(const std::string& cap);
+    Table& setCaption(const std::wstring& cap);
     const std::string& caption() const;
     /// @}
 

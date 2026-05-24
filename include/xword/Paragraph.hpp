@@ -30,12 +30,15 @@ public:
 
     /// Add a plain-text run.
     Paragraph& addRun(const std::string& text);
+    Paragraph& addRun(const std::wstring& text);
 
     /// Add a styled text run.
     Paragraph& addRun(const std::string& text, const RunStyle& style);
+    Paragraph& addRun(const std::wstring& text, const RunStyle& style);
 
     /// Add an inline LaTeX equation run.
     Paragraph& addEquation(const std::string& latex);
+    Paragraph& addEquation(const std::wstring& latex);
 
     /// Insert a Word `PAGE` field (current page number).
     Paragraph& addPageNumber();

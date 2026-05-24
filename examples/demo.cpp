@@ -258,7 +258,7 @@ int main() {
     doc.addHeading("疯狂星期四", 2);
     doc.addHeading("买一送一", 3);
     // ---- Save ----
-    std::string outputPath = "demo_output.pdf";
+    std::string outputPath = "demo_output.docx";
     if (doc.save(outputPath)) {
         std::cout << "Document saved to: " << outputPath << std::endl;
     } else {

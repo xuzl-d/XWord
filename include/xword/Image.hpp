@@ -47,6 +47,7 @@ public:
 
     /// Caption text displayed below the image.
     Image& setCaption(const std::string& caption);
+    Image& setCaption(const std::wstring& caption);
     /// @}
 
     /// @{

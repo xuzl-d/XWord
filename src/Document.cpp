@@ -761,17 +761,23 @@ std::string Document::buildStylesXml() {
         xml += "<w:name w:val=\"heading " + std::to_string(level) + "\"/>";
         xml += "<w:basedOn w:val=\"Normal\"/>";
         xml += "<w:pPr>";
-        xml += "<w:outlineLvl w:val=\"" + std::to_string(level - 1) + "\"/>";
         xml += "<w:ind w:firstLine=\"0\"/>"; // override Normal indent
+        xml += "<w:outlineLvl w:val=\"" + std::to_string(level - 1) + "\"/>";
 
-        // Spacing (twips: 1pt = 20 twips)
-        if (before > 0) xml += "<w:spacing w:before=\"" + std::to_string(static_cast<int>(before * 20)) + "\"/>";
-        if (after > 0)  xml += "<w:spacing w:after=\"" + std::to_string(static_cast<int>(after * 20)) + "\"/>";
-
-        // Line spacing (percentage: 240 = 1.0, 360 = 1.5, 480 = 2.0)
-        if (hs.lineSpacing > 0) {
-            int lineVal = static_cast<int>(hs.lineSpacing * 240);
-            xml += "<w:spacing w:line=\"" + std::to_string(lineVal) + "\" w:lineRule=\"auto\"/>";
+        // Combine all spacing attributes into a single <w:spacing> element
+        // (multiple <w:spacing/> elements are invalid OOXML)
+        {
+            bool needSpacing = (before > 0) || (after > 0) || (hs.lineSpacing > 0);
+            if (needSpacing) {
+                xml += "<w:spacing";
+                if (before > 0) xml += " w:before=\"" + std::to_string(static_cast<int>(before * 20)) + "\"";
+                if (after > 0)  xml += " w:after=\"" + std::to_string(static_cast<int>(after * 20)) + "\"";
+                if (hs.lineSpacing > 0) {
+                    int lineVal = static_cast<int>(hs.lineSpacing * 240);
+                    xml += " w:line=\"" + std::to_string(lineVal) + "\" w:lineRule=\"auto\"";
+                }
+                xml += "/>";
+            }
         }
 
         xml += "<w:keepNext/>";
@@ -960,12 +966,13 @@ std::string Document::buildHeadingNumberingXml() {
                               "%1.%2.%3.%4.%5.%6"};
     for (int i = 0; i < 6; ++i) {
         std::string lvlText = (i == 0) ? l1Text : lvlTexts[i];
-        xml += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"0\">"
+        xml += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"" + std::to_string(i) + "\">"
                "<w:start w:val=\"1\"/>"
                "<w:numFmt w:val=\"decimal\"/>"
                "<w:lvlText w:val=\"" + lvlText + "\"/>"
                "<w:lvlJc w:val=\"left\"/>"
                "<w:pPr>"
+               "<w:tabs><w:tab w:val=\"num\" w:pos=\"" + std::to_string((i + 1) * 360) + "\"/></w:tabs>"
                "<w:ind w:left=\"" + std::to_string((i + 1) * 360) + "\" w:hanging=\"360\"/>"
                "</w:pPr>"
                "</w:lvl>";
@@ -984,12 +991,13 @@ std::string Document::buildNumberingXml() {
     xml += "<w:abstractNum w:abstractNumId=\"0\">"
            "<w:multiLevelType w:val=\"hybridMultilevel\"/>";
     for (int i = 0; i < 9; ++i) {
-        xml += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"0\">"
+        xml += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"" + std::to_string(i) + "\">"
                "<w:start w:val=\"1\"/>"
                "<w:numFmt w:val=\"bullet\"/>"
                "<w:lvlText w:val=\"\xC2\xB7\"/>"   // · (U+00B7) middle dot
                "<w:lvlJc w:val=\"left\"/>"
                "<w:pPr>"
+               "<w:tabs><w:tab w:val=\"num\" w:pos=\"" + std::to_string((i + 1) * 420) + "\"/></w:tabs>"
                "<w:ind w:left=\"" + std::to_string((i + 1) * 420) + "\" w:hanging=\"420\"/>"
                "</w:pPr>"
                "<w:rPr><w:rFonts w:hint=\"default\"/></w:rPr>"
@@ -1001,12 +1009,13 @@ std::string Document::buildNumberingXml() {
     xml += "<w:abstractNum w:abstractNumId=\"1\">"
            "<w:multiLevelType w:val=\"hybridMultilevel\"/>";
     for (int i = 0; i < 9; ++i) {
-        xml += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"0\">"
+        xml += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"" + std::to_string(i) + "\">"
                "<w:start w:val=\"1\"/>"
                "<w:numFmt w:val=\"decimal\"/>"
                "<w:lvlText w:val=\"%" + std::to_string(i + 1) + ".\"/>"
                "<w:lvlJc w:val=\"left\"/>"
                "<w:pPr>"
+               "<w:tabs><w:tab w:val=\"num\" w:pos=\"" + std::to_string((i + 1) * 420) + "\"/></w:tabs>"
                "<w:ind w:left=\"" + std::to_string((i + 1) * 420) + "\" w:hanging=\"420\"/>"
                "</w:pPr>"
                "</w:lvl>";

@@ -17,6 +17,8 @@ public:
     /// @param mode   Inline (default) or Display.
     explicit Equation(const std::string& latex,
                       EquationMode mode = EquationMode::Inline);
+    explicit Equation(const std::wstring& latex,
+                      EquationMode mode = EquationMode::Inline);
 
     ~Equation();
     Equation(Equation&&) noexcept;
