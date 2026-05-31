@@ -138,6 +138,16 @@ public:
     int cols() const;
     /// @}
 
+    /// @name Column width ratios
+    /// @{
+    /// Set width ratio for a single column (relative proportion; default is 1.0 for equal width).
+    Table& setColumnWidth(int col, double ratio);
+    /// Set width ratios for all columns at once.
+    Table& setColumnWidths(const std::vector<double>& ratios);
+    /// Get width ratio for a column.
+    double getColumnWidth(int col) const;
+    /// @}
+
     /// Build OOXML table XML (internal use).
     std::string toXml() const;
 

@@ -20,6 +20,8 @@ struct Table::Impl {
     TableStyle m_style = TableStyle::None;
     std::string m_caption;
     std::vector<std::vector<Cell>> m_cells;
+    std::vector<double> m_columnWidthRatios;  // Width ratio for each column (default 1.0)
+    bool m_hasCustomWidths = false;            // true when user explicitly sets widths
 };
 
 Cell::Cell() : m_impl(std::make_unique<Impl>()) {}
@@ -100,6 +102,8 @@ Table::Table(int rows, int cols)
     m_impl->m_cells.resize(rows);
     for (int r = 0; r < rows; ++r)
         m_impl->m_cells[r].resize(cols);
+    // Initialize column width ratios with default value 1.0
+    m_impl->m_columnWidthRatios.resize(cols, 1.0);
 }
 
 Table::~Table() = default;
@@ -116,6 +120,28 @@ const Cell& Table::cell(int row, int col) const { return m_impl->m_cells[row][co
 
 int Table::rows() const { return m_impl->m_rows; }
 int Table::cols() const { return m_impl->m_cols; }
+
+Table& Table::setColumnWidth(int col, double ratio) {
+    if (col >= 0 && col < m_impl->m_cols) {
+        m_impl->m_columnWidthRatios[col] = ratio;
+        m_impl->m_hasCustomWidths = true;
+    }
+    return *this;
+}
+
+Table& Table::setColumnWidths(const std::vector<double>& ratios) {
+    if (ratios.size() == static_cast<size_t>(m_impl->m_cols)) {
+        m_impl->m_columnWidthRatios = ratios;
+        m_impl->m_hasCustomWidths = true;
+    }
+    return *this;
+}
+
+double Table::getColumnWidth(int col) const {
+    if (col >= 0 && col < m_impl->m_cols)
+        return m_impl->m_columnWidthRatios[col];
+    return 1.0;
+}
 
 Table& Table::mergeCells(int row1, int col1, int row2, int col2) {
     int spanW = col2 - col1 + 1;
@@ -211,11 +237,21 @@ std::string Table::toXml() const {
     }
     xml += "<w:tblW w:w=\"5000\" w:type=\"pct\"/>";
     xml += "<w:jc w:val=\"center\"/>";
+    if (m_impl->m_hasCustomWidths)
+        xml += "<w:tblLayout w:type=\"fixed\"/>";
     xml += "</w:tblPr>";
 
     xml += "<w:tblGrid>";
+    // Calculate total width ratio and individual column widths
+    double totalRatio = 0.0;
     for (int c = 0; c < m_impl->m_cols; ++c)
-        xml += "<w:gridCol w:w=\"" + std::to_string(9500 / m_impl->m_cols) + "\"/>";
+        totalRatio += m_impl->m_columnWidthRatios[c];
+    
+    for (int c = 0; c < m_impl->m_cols; ++c) {
+        double ratio = m_impl->m_columnWidthRatios[c];
+        int width = static_cast<int>(9500.0 * ratio / totalRatio);
+        xml += "<w:gridCol w:w=\"" + std::to_string(width) + "\"/>";
+    }
     xml += "</w:tblGrid>";
 
     for (int r = 0; r < m_impl->m_rows; ++r) {

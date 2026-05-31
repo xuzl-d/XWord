@@ -157,6 +157,26 @@ int main() {
     table4.cell(1, 0).addParagraph("勾股定理");
     table4.cell(1, 1).addEquation("a^2 + b^2 = c^2");
 
+    // ---- Table with custom column widths ----
+    doc.addHeading("自定义列宽比例表格", 3);
+  
+    auto& table5 = doc.addTable(3, 3);
+    table5.setStyle(TableStyle::Grid).setCaption("列宽比例示例");
+    // Set column width ratios: first column 1.5x, second 1.0x, third 2.0x
+    table5.setColumnWidths({1.5, 1.0, 2.0});
+    
+    table5.cell(0, 0).addParagraph("标签", RunStyle().bold());
+    table5.cell(0, 1).addParagraph("值", RunStyle().bold());
+    table5.cell(0, 2).addParagraph("描述", RunStyle().bold());
+    
+    table5.cell(1, 0).addParagraph("名称");
+    table5.cell(1, 1).addParagraph("示例1");
+    table5.cell(1, 2).addParagraph("这是一个较宽的列用来显示详细描述");
+    
+    table5.cell(2, 0).addParagraph("类型");
+    table5.cell(2, 1).addParagraph("示例2");
+    table5.cell(2, 2).addParagraph("第三列的宽度是第二列的两倍，可以容纳更多内容");
+
     // ---- Lists ----
     doc.addHeading("列表", 2);
 
