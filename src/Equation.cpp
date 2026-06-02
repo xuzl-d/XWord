@@ -541,12 +541,16 @@ namespace xword {
         const char* end = p + m_impl->m_latex.size();
         std::string content = parseLaTeX(p, end);
 
-        // Inject <m:rPr><m:sz> into <m:r> elements that lack <m:rPr>, for
-        // absolute font size control.  Runs that already have <m:rPr>
-        // (e.g. from \text{} → sty="p") keep their properties plus the size.
+        // Math runs take their font size from <w:rPr><w:sz>, NOT from <m:rPr>
+        // (there is no <m:sz> element in OMML). Inject a <w:rPr> block into
+        // every <m:r>, placed AFTER any existing <m:rPr> (e.g. sty="p" from
+        // \text{}) — Word requires m:rPr first, then w:rPr within m:r.
         if (m_impl->m_fontSizeHalfPt > 0) {
-            std::string szXml = "<m:sz m:val=\"" + std::to_string(m_impl->m_fontSizeHalfPt) + "\"/>"
-                                "<m:szCs m:val=\"" + std::to_string(m_impl->m_fontSizeHalfPt) + "\"/>";
+            std::string sz = std::to_string(m_impl->m_fontSizeHalfPt);
+            std::string wRPr = "<w:rPr>"
+                               "<w:sz w:val=\"" + sz + "\"/>"
+                               "<w:szCs w:val=\"" + sz + "\"/>"
+                               "</w:rPr>";
             std::string result;
             size_t pos = 0;
             while (true) {
@@ -555,16 +559,23 @@ namespace xword {
                     result += content.substr(pos);
                     break;
                 }
-                result += content.substr(pos, found - pos);
-                // Check if this <m:r> is immediately followed by <m:rPr>
+                // Copy everything up to and including "<m:r>"
+                result += content.substr(pos, found - pos + 5);
                 size_t afterTag = found + 5; // skip "<m:r>"
                 if (content.compare(afterTag, 7, "<m:rPr>") == 0) {
-                    // Existing rPr — inject sz into it (after "<m:rPr>")
-                    result += "<m:r><m:rPr>" + szXml;
-                    pos = afterTag + 7; // skip past "<m:rPr>"
+                    // Existing m:rPr — copy through "</m:rPr>" then insert w:rPr
+                    size_t mRPrEnd = content.find("</m:rPr>", afterTag);
+                    if (mRPrEnd != std::string::npos) {
+                        size_t copyEnd = mRPrEnd + 8; // past "</m:rPr>"
+                        result += content.substr(afterTag, copyEnd - afterTag);
+                        result += wRPr;
+                        pos = copyEnd;
+                    } else {
+                        pos = afterTag;
+                    }
                 } else {
-                    // No rPr — add new one
-                    result += "<m:r><m:rPr>" + szXml + "</m:rPr>";
+                    // No m:rPr — w:rPr comes immediately after <m:r>
+                    result += wRPr;
                     pos = afterTag;
                 }
             }

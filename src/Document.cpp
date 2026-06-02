@@ -233,12 +233,13 @@ Document& Document::addTOC(const std::string& levels, const std::string& title) 
 
 Paragraph& Document::addParagraph(const std::string& text) {
     auto p = std::make_unique<Paragraph>();
+    // Apply default run font size so subsequent .addRun(text) calls inherit
+    // the body text size instead of falling back to the Normal style size.
+    if (m_impl->m_bodyRunFontSize > 0) {
+        p->setDefaultRunFontSize(static_cast<int>(m_impl->m_bodyRunFontSize));
+    }
     if (!text.empty()) {
-        if (m_impl->m_bodyRunFontSize > 0) {
-            p->addRun(text, RunStyle().fontSize(static_cast<int>(m_impl->m_bodyRunFontSize)));
-        } else {
-            p->addRun(text);
-        }
+        p->addRun(text);
     }
     // Apply default indent
     if (m_impl->m_defaultIndent > 0) {

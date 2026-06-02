@@ -20,6 +20,7 @@ struct Paragraph::Impl {
     int        m_spacingAfter = -1;
     int        m_spacingBefore = -1;
     int        m_equationFontSize = 0;  // half-pts; 0 = inherit from style
+    int        m_defaultRunFontSize = 0;  // pts; 0 = inherit from Normal style
 };
 
 Paragraph::Paragraph()
@@ -90,6 +91,11 @@ Paragraph& Paragraph::setEquationFontSize(int halfPt) {
     return *this;
 }
 
+Paragraph& Paragraph::setDefaultRunFontSize(int pt) {
+    m_impl->m_defaultRunFontSize = pt;
+    return *this;
+}
+
 std::string Paragraph::toXml() const {
     using namespace internal;
 
@@ -130,15 +136,20 @@ std::string Paragraph::toXml() const {
                    "<w:r><w:t>1</w:t></w:r>"
                    "<w:r><w:fldChar w:fldCharType=\"end\"/></w:r>";
         } else {
+            // Effective font size: run style overrides the paragraph default.
+            int effSize = run.style.fontSize() > 0
+                        ? run.style.fontSize()
+                        : m_impl->m_defaultRunFontSize;
+            bool needRPr = run.style.hasFormatting() || effSize > 0;
             xml += "<w:r>";
-            if (run.style.hasFormatting()) {
+            if (needRPr) {
                 xml += "<w:rPr>";
                 if (run.style.bold()) xml += "<w:b/>";
                 if (run.style.italic()) xml += "<w:i/>";
                 if (run.style.underline()) xml += "<w:u w:val=\"single\"/>";
-                if (run.style.fontSize() > 0) {
-                    xml += "<w:sz w:val=\"" + std::to_string(run.style.fontSize() * 2) + "\"/>";
-                    xml += "<w:szCs w:val=\"" + std::to_string(run.style.fontSize() * 2) + "\"/>";
+                if (effSize > 0) {
+                    xml += "<w:sz w:val=\"" + std::to_string(effSize * 2) + "\"/>";
+                    xml += "<w:szCs w:val=\"" + std::to_string(effSize * 2) + "\"/>";
                 }
                 if (!run.style.color().empty())
                     xml += "<w:color w:val=\"" + run.style.color() + "\"/>";
