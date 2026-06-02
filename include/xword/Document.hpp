@@ -67,6 +67,26 @@ public:
     /// @param fontSizePt  Reference font size in pt (default 12).
     Document& setDefaultParagraphIndent(double chars = 2, int fontSizePt = 12);
 
+    /// Set default body text font (applied to Normal style).
+    /// @param eastAsia  Font for East-Asian (CJK) text.
+    /// @param ascii     Font for ASCII/Latin text.
+    /// @param hAnsi     Font for high-ANSI text (defaults to eastAsia if empty).
+    Document& setBodyFont(const std::string& eastAsia,
+                          const std::string& ascii = "",
+                          const std::string& hAnsi = "");
+
+    /// Set default body text font size in points.
+    Document& setBodyFontSize(double pt);
+
+    /// Set default line spacing multiplier for body text (e.g. 1.25).
+    Document& setBodyLineSpacing(double line);
+
+    /// Set default run-level font size (in pt) for body paragraph text.
+    /// When set, all body runs created via addParagraph() will use this size.
+    /// This allows body text to have a different size from table text, which
+    /// inherits the Normal style font size.
+    Document& setBodyRunFontSize(double pt);
+
     // ── Headings ───────────────────────────────────────────
 
     /// Add a numbered heading (level 1–6).

@@ -44,6 +44,13 @@ struct Document::Impl {
     HeadingNumFormat m_headingNumFormat = HeadingNumFormat::Decimal;
     int             m_nextOrderedListId = 3;
     int             m_defaultIndent = 480;
+    std::string     m_bodyFontEastAsia;
+    std::string     m_bodyFontAscii;
+    std::string     m_bodyFontHAnsi;
+    double          m_bodyFontSize = 0;        // 0 = use default (11pt)
+    double          m_bodyLineSpacing = 0;     // 0 = use default (1.15x)
+    double          m_bodyRunFontSize = 0;     // explicit run-level font size for body text (0=none)
+    std::string     m_bodyRunFont;             // explicit run-level font name for body text
     bool            m_imageNumbering = false;
     std::string     m_imageNumPrefix = "å¾";
     CaptionNumStyle m_imageNumStyle = CaptionNumStyle::Sequential;
@@ -76,6 +83,30 @@ Document& Document::setDefaultParagraphIndent(double chars, int fontSizePt) {
     } else {
         m_impl->m_defaultIndent = static_cast<int>(chars * fontSizePt * 20);
     }
+    return *this;
+}
+
+Document& Document::setBodyFont(const std::string& eastAsia,
+                                const std::string& ascii,
+                                const std::string& hAnsi) {
+    m_impl->m_bodyFontEastAsia = eastAsia;
+    m_impl->m_bodyFontAscii = ascii;
+    m_impl->m_bodyFontHAnsi = hAnsi.empty() ? eastAsia : hAnsi;
+    return *this;
+}
+
+Document& Document::setBodyFontSize(double pt) {
+    m_impl->m_bodyFontSize = pt;
+    return *this;
+}
+
+Document& Document::setBodyLineSpacing(double line) {
+    m_impl->m_bodyLineSpacing = line;
+    return *this;
+}
+
+Document& Document::setBodyRunFontSize(double pt) {
+    m_impl->m_bodyRunFontSize = pt;
     return *this;
 }
 
@@ -203,11 +234,19 @@ Document& Document::addTOC(const std::string& levels, const std::string& title) 
 Paragraph& Document::addParagraph(const std::string& text) {
     auto p = std::make_unique<Paragraph>();
     if (!text.empty()) {
-        p->addRun(text);
+        if (m_impl->m_bodyRunFontSize > 0) {
+            p->addRun(text, RunStyle().fontSize(static_cast<int>(m_impl->m_bodyRunFontSize)));
+        } else {
+            p->addRun(text);
+        }
     }
     // Apply default indent
     if (m_impl->m_defaultIndent > 0) {
         p->setFirstLineIndent(m_impl->m_defaultIndent);
+    }
+    // Apply equation font size to match body text
+    if (m_impl->m_bodyRunFontSize > 0) {
+        p->setEquationFontSize(static_cast<int>(m_impl->m_bodyRunFontSize * 2));
     }
     Paragraph* ptr = p.get();
     m_impl->m_paragraphs.push_back(std::move(p));
@@ -387,7 +426,8 @@ void Document::buildDocumentXml(std::string& xml) {
                             const std::string& userCaption) -> std::string {
         std::string s;
         s += "<w:p>"
-             "<w:pPr><w:jc w:val=\"center\"/><w:ind w:firstLine=\"0\"/></w:pPr>"
+             "<w:pPr><w:spacing w:after=\"0\" w:before=\"0\"/>"
+             "<w:jc w:val=\"center\"/><w:ind w:firstLine=\"0\"/></w:pPr>"
              "<w:r><w:rPr><w:b/></w:rPr>"
              "<w:t xml:space=\"preserve\">" + xmlEscape(prefix + numText) + "</w:t>"
              "</w:r>";
@@ -593,6 +633,8 @@ void Document::buildDocumentXml(std::string& xml) {
                 }
                 case ElementType::Equation: {
                     Equation* eq = elem->data.equation;
+                    int eqSz = static_cast<int>(m_impl->m_bodyRunFontSize * 2);
+                    if (eqSz > 0) eq->setFontSize(eqSz);
                     if (eq->mode() == EquationMode::Display)
                         xml += "<w:p>" + eq->toXml() + "</w:p>";
                     else
@@ -802,6 +844,24 @@ std::string Document::buildStylesXml() {
         normalIndent = "<w:ind w:firstLine=\"" + std::to_string(m_impl->m_defaultIndent) + "\"/>";
     }
 
+    // Build Normal style rPr (font + size)
+    std::string normalRPr;
+    {
+        int sz = m_impl->m_bodyFontSize > 0 ? static_cast<int>(m_impl->m_bodyFontSize * 2) : 22;
+        normalRPr = "<w:sz w:val=\"" + std::to_string(sz) + "\"/>"
+                    "<w:szCs w:val=\"" + std::to_string(sz) + "\"/>";
+        if (!m_impl->m_bodyFontEastAsia.empty()) {
+            std::string ascii = m_impl->m_bodyFontAscii.empty() ? m_impl->m_bodyFontEastAsia : m_impl->m_bodyFontAscii;
+            normalRPr += "<w:rFonts w:ascii=\"" + ascii + "\" "
+                         "w:hAnsi=\"" + m_impl->m_bodyFontHAnsi + "\" "
+                         "w:eastAsia=\"" + m_impl->m_bodyFontEastAsia + "\"/>";
+        }
+    }
+
+    // Build Normal style spacing
+    double lineSpacing = m_impl->m_bodyLineSpacing > 0 ? m_impl->m_bodyLineSpacing : 1.15;
+    int lineVal = static_cast<int>(lineSpacing * 240);
+
     std::string xml;
     xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
           "<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
@@ -810,10 +870,10 @@ std::string Document::buildStylesXml() {
           "<w:style w:type=\"paragraph\" w:styleId=\"Normal\" w:default=\"1\">"
           "<w:name w:val=\"Normal\"/>"
           "<w:pPr>"
-          "<w:spacing w:after=\"160\" w:line=\"276\" w:lineRule=\"auto\"/>"
+          "<w:spacing w:after=\"160\" w:line=\"" + std::to_string(lineVal) + "\" w:lineRule=\"auto\"/>"
           + normalIndent +
           "</w:pPr>"
-          "<w:rPr><w:sz w:val=\"22\"/><w:szCs w:val=\"22\"/></w:rPr>"
+          "<w:rPr>" + normalRPr + "</w:rPr>"
           "</w:style>"
 
           // List paragraph style
@@ -972,8 +1032,8 @@ std::string Document::buildHeadingNumberingXml() {
                "<w:lvlText w:val=\"" + lvlText + "\"/>"
                "<w:lvlJc w:val=\"left\"/>"
                "<w:pPr>"
-               "<w:tabs><w:tab w:val=\"num\" w:pos=\"" + std::to_string((i + 1) * 360) + "\"/></w:tabs>"
-               "<w:ind w:left=\"" + std::to_string((i + 1) * 360) + "\" w:hanging=\"360\"/>"
+               "<w:tabs><w:tab w:val=\"num\" w:pos=\"360\"/></w:tabs>"
+               "<w:ind w:left=\"360\" w:hanging=\"360\"/>"
                "</w:pPr>"
                "</w:lvl>";
     }

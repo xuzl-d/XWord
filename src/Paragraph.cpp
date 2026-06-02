@@ -19,6 +19,7 @@ struct Paragraph::Impl {
     int        m_firstLineIndent = -1;
     int        m_spacingAfter = -1;
     int        m_spacingBefore = -1;
+    int        m_equationFontSize = 0;  // half-pts; 0 = inherit from style
 };
 
 Paragraph::Paragraph()
@@ -84,6 +85,11 @@ Paragraph& Paragraph::setSpacingBefore(int twips) {
     return *this;
 }
 
+Paragraph& Paragraph::setEquationFontSize(int halfPt) {
+    m_impl->m_equationFontSize = halfPt;
+    return *this;
+}
+
 std::string Paragraph::toXml() const {
     using namespace internal;
 
@@ -107,8 +113,10 @@ std::string Paragraph::toXml() const {
 
     for (const auto& run : m_impl->m_runs) {
         if (run.kind == RunKind::InlineEquation) {
-            std::string eqXml = Equation(run.content, EquationMode::Inline).toXml();
-            xml += "<w:r>" + eqXml + "</w:r>";
+            Equation eq(run.content, EquationMode::Inline);
+            if (m_impl->m_equationFontSize > 0)
+                eq.setFontSize(m_impl->m_equationFontSize);
+            xml += "<w:r>" + eq.toXml() + "</w:r>";
         } else if (run.kind == RunKind::FootnoteRef) {
             xml += "<w:r>"
                    "<w:rPr><w:rStyle w:val=\"FootnoteReference\"/></w:rPr>"

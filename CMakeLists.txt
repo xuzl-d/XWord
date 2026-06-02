@@ -62,6 +62,12 @@ if(XWORD_BUILD_EXAMPLES)
     if(MSVC)
         target_compile_options(xword_demo_template PRIVATE /utf-8 /wd4996)
     endif()
+
+    add_executable(xword_demo_platform examples/demo_platform.cpp)
+    target_link_libraries(xword_demo_platform PRIVATE xword)
+    if(MSVC)
+        target_compile_options(xword_demo_platform PRIVATE /utf-8 /wd4996)
+    endif()
 endif()
 
 # ---- Tests ----

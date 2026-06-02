@@ -68,6 +68,10 @@ public:
 
     /// Spacing before paragraph in twips (-1 = inherit from style).
     Paragraph& setSpacingBefore(int twips);
+
+    /// Set font size (in half-points) for inline equations in this paragraph.
+    /// 0 (default) means inherit from the document style.
+    Paragraph& setEquationFontSize(int halfPt);
     /// @}
 
     /// Build OOXML paragraph XML (internal use).

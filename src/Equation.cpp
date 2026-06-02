@@ -42,7 +42,9 @@ namespace xword {
             {"Omega",   "\xCE\xA9"},
             {"infty",   "\xE2\x88\x9E"}, {"pm",   "\xC2\xB1"},   {"mp",     "\xE2\x88\x93"},
             {"times",   "\xC3\x97"},     {"div",  "\xC3\xB7"},   {"cdot",   "\xE2\x8B\x85"},
-            {"leq",     "\xE2\x89\xA4"}, {"geq",  "\xE2\x89\xA5"}, {"neq",   "\xE2\x89\xA0"},
+            {"leq",     "\xE2\x89\xA4"}, {"le",   "\xE2\x89\xA4"},
+            {"geq",     "\xE2\x89\xA5"}, {"ge",   "\xE2\x89\xA5"},
+            {"neq",     "\xE2\x89\xA0"},
             {"approx",  "\xE2\x89\x88"}, {"equiv","\xE2\x89\xA1"}, {"sim",   "\xE2\x88\xBC"},
             {"subset",  "\xE2\x8A\x82"}, {"supset","\xE2\x8A\x83"}, {"subseteq","\xE2\x8A\x86"},
             {"cup",     "\xE2\x88\xAA"}, {"cap",  "\xE2\x88\xA9"}, {"emptyset","\xE2\x88\x85"},
@@ -110,6 +112,13 @@ namespace xword {
         std::string run(const std::string& text) {
             if (text.empty()) return "";
             return "<m:r><m:t xml:space=\"preserve\">" + xmlEscape(text) + "</m:t></m:r>";
+        }
+
+        // 带 <m:sty m:val="p"/> 的文本运行 — 非斜体（用于 \text{}）
+        std::string runPlain(const std::string& text) {
+            if (text.empty()) return "";
+            return "<m:r><m:rPr><m:sty m:val=\"p\"/></m:rPr>"
+                   "<m:t xml:space=\"preserve\">" + xmlEscape(text) + "</m:t></m:r>";
         }
 
         // 解析 { ... } 分组，返回内部 OMML（不含 <m:e>）
@@ -364,6 +373,22 @@ namespace xword {
                     while (p < end && std::isalpha(static_cast<unsigned char>(*p))) ++p;
                     std::string_view cmd(cmdStart, p - cmdStart);
 
+                    if (cmd == "text") {
+                        // \text{...} — extract raw content between braces
+                        // (must NOT use parseGroup which would drop non-ASCII characters)
+                        if (p < end && *p == '{') {
+                            ++p; // skip '{'
+                            int braceDepth = 1;
+                            std::string raw;
+                            while (p < end && braceDepth > 0) {
+                                if (*p == '{') ++braceDepth;
+                                else if (*p == '}') { --braceDepth; if (braceDepth == 0) { ++p; break; } }
+                                if (braceDepth > 0) raw += *p++;
+                            }
+                            if (!raw.empty()) parts.push_back(runPlain(raw));
+                        }
+                        continue;
+                    }
                     if (cmd == "frac") {
                         parts.push_back(parseFrac(p, end));
                         continue;
@@ -455,6 +480,20 @@ namespace xword {
                     continue;
                 }
 
+                // UTF-8 multibyte character (e.g. Chinese/Japanese/Korean)
+                if (static_cast<unsigned char>(*p) >= 0x80) {
+                    const char* start = p;
+                    // Leading byte determines sequence length
+                    int len = 1;
+                    unsigned char c = static_cast<unsigned char>(*p);
+                    if ((c & 0xE0) == 0xC0) len = 2;
+                    else if ((c & 0xF0) == 0xE0) len = 3;
+                    else if ((c & 0xF8) == 0xF0) len = 4;
+                    while (len-- > 0 && p < end) ++p;
+                    parts.push_back(run(std::string(start, p - start)));
+                    continue;
+                }
+
                 // 跳过其他无法识别的字符
                 ++p;
             }
@@ -471,6 +510,7 @@ namespace xword {
     struct Equation::Impl {
         std::string  m_latex;
         EquationMode m_mode = EquationMode::Inline;
+        int          m_fontSizeHalfPt = 0;  // 0 = inherit from document
     };
 
     Equation::Equation(const std::string& latex, EquationMode mode)
@@ -486,6 +526,11 @@ namespace xword {
         return *this;
     }
 
+    Equation& Equation::setFontSize(int halfPt) {
+        m_impl->m_fontSizeHalfPt = halfPt;
+        return *this;
+    }
+
     const std::string& Equation::latex() const { return m_impl->m_latex; }
     EquationMode       Equation::mode()  const { return m_impl->m_mode; }
 
@@ -496,7 +541,36 @@ namespace xword {
         const char* end = p + m_impl->m_latex.size();
         std::string content = parseLaTeX(p, end);
 
-        // m: 命名空间由父文档 / 页眉 / 页脚根元素声明，这里不重复声明
+        // Inject <m:rPr><m:sz> into <m:r> elements that lack <m:rPr>, for
+        // absolute font size control.  Runs that already have <m:rPr>
+        // (e.g. from \text{} → sty="p") keep their properties plus the size.
+        if (m_impl->m_fontSizeHalfPt > 0) {
+            std::string szXml = "<m:sz m:val=\"" + std::to_string(m_impl->m_fontSizeHalfPt) + "\"/>"
+                                "<m:szCs m:val=\"" + std::to_string(m_impl->m_fontSizeHalfPt) + "\"/>";
+            std::string result;
+            size_t pos = 0;
+            while (true) {
+                size_t found = content.find("<m:r>", pos);
+                if (found == std::string::npos) {
+                    result += content.substr(pos);
+                    break;
+                }
+                result += content.substr(pos, found - pos);
+                // Check if this <m:r> is immediately followed by <m:rPr>
+                size_t afterTag = found + 5; // skip "<m:r>"
+                if (content.compare(afterTag, 7, "<m:rPr>") == 0) {
+                    // Existing rPr — inject sz into it (after "<m:rPr>")
+                    result += "<m:r><m:rPr>" + szXml;
+                    pos = afterTag + 7; // skip past "<m:rPr>"
+                } else {
+                    // No rPr — add new one
+                    result += "<m:r><m:rPr>" + szXml + "</m:rPr>";
+                    pos = afterTag;
+                }
+            }
+            content = result;
+        }
+
         if (m_impl->m_mode == EquationMode::Display) {
             return "<m:oMathPara><m:oMath>" + content + "</m:oMath></m:oMathPara>";
         }

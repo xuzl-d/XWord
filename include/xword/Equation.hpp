@@ -27,6 +27,10 @@ public:
     /// Change the rendering mode after construction.
     Equation& setMode(EquationMode mode);
 
+    /// Set the font size for this equation in half-points (e.g. 24 for 12pt).
+    /// 0 (default) means inherit from the document style.
+    Equation& setFontSize(int halfPt);
+
     /// The original LaTeX source.
     const std::string& latex() const;
 

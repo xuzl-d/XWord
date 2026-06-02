@@ -22,6 +22,7 @@ struct Table::Impl {
     std::vector<std::vector<Cell>> m_cells;
     std::vector<double> m_columnWidthRatios;  // Width ratio for each column (default 1.0)
     bool m_hasCustomWidths = false;            // true when user explicitly sets widths
+    Alignment m_cellAlignment = Alignment::Center; // default: center cell text
 };
 
 Cell::Cell() : m_impl(std::make_unique<Impl>()) {}
@@ -282,8 +283,18 @@ std::string Table::toXml() const {
                            "</w:r></w:p>";
                 }
             }
-            for (const auto& p : cell.paragraphs())
-                xml += p->toXml();
+            for (const auto& p : cell.paragraphs()) {
+                std::string pXml = p->toXml();
+                // Inject default cell alignment if paragraph doesn't have one
+                if (m_impl->m_cellAlignment != Alignment::Left &&
+                    pXml.find("<w:jc ") == std::string::npos) {
+                    std::string jcXml = "<w:jc w:val=\"center\"/>";
+                    size_t pos = pXml.find("<w:pPr>");
+                    if (pos != std::string::npos)
+                        pXml.insert(pos + 7, jcXml); // len("<w:pPr>") = 7
+                }
+                xml += pXml;
+            }
 
             if (cell.paragraphs().empty() && liveImages == 0)
                 xml += "<w:p/>";
