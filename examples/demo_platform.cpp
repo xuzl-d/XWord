@@ -18,8 +18,9 @@ int main() {
     // Body run override: 12pt — applied to body paragraphs automatically
     doc.setBodyFont(u8"宋体", "Times New Roman", u8"宋体");
     doc.setBodyFontSize(10.5);       // 五号 = 10.5pt for Normal style (table cells)
-    doc.setBodyRunFontSize(12);      // body paragraphs get 12pt via run-level formatting
+    doc.setBodyRunStyle(RunStyle().fontSize(12)); // body paragraphs default to 12pt
     doc.setBodyLineSpacing(1.25);    // 1.25× line spacing
+    doc.setDisplayEquationStyle(RunStyle().fontSize(12));
 
     // ---- Heading style customization (no color — match reference black headings) ----
     // H1: 宋体 15pt, space before 340 twips (17pt), after 330 twips (16.5pt)
@@ -57,12 +58,12 @@ int main() {
     // ---- 1.1 计算依据 ----
     doc.addHeading("计算依据", 2);
 
-    doc.addParagraph("《工程结构通用规范》GB55001-2021");
-    doc.addParagraph("《施工脚手架通用规范》GB55023-2022");
-    doc.addParagraph("《建筑施工扣件式钢管脚手架安全技术规范》JGJ130-2011");
-    doc.addParagraph("《建筑结构荷载规范》GB50009-2012");
-    doc.addParagraph("《钢结构通用规范》GB55006-2021");
-    doc.addParagraph("《钢结构设计标准》GB50017-2017");
+    doc.addParagraph("《工程结构通用规范》GB55001-2021").setSpacingAfter(0);
+    doc.addParagraph("《施工脚手架通用规范》GB55023-2022").setSpacingAfter(0);
+    doc.addParagraph("《建筑施工扣件式钢管脚手架安全技术规范》JGJ130-2011").setSpacingAfter(0);
+    doc.addParagraph("《建筑结构荷载规范》GB50009-2012").setSpacingAfter(0);
+    doc.addParagraph("《钢结构通用规范》GB55006-2021").setSpacingAfter(0);
+    doc.addParagraph("《钢结构设计标准》GB50017-2017").setSpacingAfter(0);
     doc.addParagraph("《建筑结构可靠性设计统一标准》GB50068-2018");
 
     // ---- 表1 架体布置参数 ----
@@ -121,7 +122,7 @@ int main() {
     doc.addHeading("悬挑支撑梁验算", 2);
 
     doc.addParagraph()
-        .addRun("经计算，各悬挑支撑梁弯矩、变形计算结果如下：", RunStyle().fontSize(12).color("0000FF"));
+        .addRun("经计算，各悬挑支撑梁弯矩、变形计算结果如下：", RunStyle().color("0000FF"));
 
     // ---- 表3 各主梁计算结果 ----
     {
@@ -141,9 +142,9 @@ int main() {
     // ---- 1.2.1 抗弯验算 ----
     doc.addHeading("抗弯验算", 3);
 
-    doc.addParagraph().addRun("选择x=0mm弯矩最大主梁进行验算", RunStyle().fontSize(12).bold());
+    doc.addParagraph().addRun("选择x=0mm弯矩最大主梁进行验算", RunStyle().bold());
     doc.addParagraph()
-        .addRun("悬挑主梁荷载设计值计算简图如下：", RunStyle().fontSize(12).color("0000FF"));
+        .addRun("悬挑主梁荷载设计值计算简图如下：", RunStyle().color("0000FF"));
 
     // 图3
     doc.addImage("../examples/res/image3.emf")
@@ -151,7 +152,7 @@ int main() {
        .setAlignment(Alignment::Center);
 
     doc.addParagraph()
-        .addRun("悬挑主梁弯矩图如下：", RunStyle().fontSize(12).color("0000FF"));
+        .addRun("悬挑主梁弯矩图如下：", RunStyle().color("0000FF"));
 
     // 图4
     doc.addImage("../examples/res/image4.emf")
@@ -180,7 +181,7 @@ int main() {
     doc.addHeading("抗剪验算", 3);
 
     doc.addParagraph()
-        .addRun("悬挑主梁剪力图如下：", RunStyle().fontSize(12).color("0000FF"));
+        .addRun("悬挑主梁剪力图如下：", RunStyle().color("0000FF"));
 
     // 图5
     doc.addImage("../examples/res/image5.emf")
@@ -205,7 +206,7 @@ int main() {
     doc.addHeading("挠度验算", 3);
 
     doc.addParagraph()
-        .addRun("悬挑主梁荷载标准值计算简图如下：", RunStyle().fontSize(12).color("0000FF"));
+        .addRun("悬挑主梁荷载标准值计算简图如下：", RunStyle().color("0000FF"));
 
     // 图6
     doc.addImage("../examples/res/image6.emf")
@@ -213,7 +214,7 @@ int main() {
        .setAlignment(Alignment::Center);
 
     doc.addParagraph()
-        .addRun("悬挑主梁挠度变形图如下：", RunStyle().fontSize(12).color("0000FF"));
+        .addRun("悬挑主梁挠度变形图如下：", RunStyle().color("0000FF"));
 
     // 图7
     doc.addImage("../examples/res/image7.emf")
@@ -222,14 +223,14 @@ int main() {
 
     doc.addDisplayEquation("\\nu_{\\max}=1.8793\\ \\text{mm}");
     doc.addDisplayEquation("\\upsilon_{\\max}=1.8793\\ \\text{mm}");
-    doc.addDisplayEquation("\\upsilon_{\\max}=1.8793\\ \\text{mm}\\le[\\upsilon]=2500\\times1/400=6.25\\ \\text{mm}");
+    doc.addDisplayEquation("υ_{\\mathrm{max}}=1.8793\\mathrm{mm}≤\\mathrm{[} υ\\mathrm{]}=2500×1\\mathrm{/400}=6.25\\mathrm{mm}");
     doc.addDisplayEquation("\\text{满足要求!}");
 
     // ---- 1.2.5 支座反力 ----
     doc.addHeading("支座反力", 3);
 
     doc.addParagraph()
-        .addRun("各悬挑主梁的支座反力将作为荷载用于连接节点验算", RunStyle().fontSize(12).color("0000FF"));
+        .addRun("各悬挑主梁的支座反力将作为荷载用于连接节点验算", RunStyle().color("0000FF"));
 
     // 表4
     {
@@ -305,7 +306,7 @@ int main() {
     doc.addDisplayEquation("T=\\max\\left(\\frac{R_1}{2},R_2\\right)\\times0.5=1.18\\ \\text{kN}");
     doc.addDisplayEquation("\\sigma=\\frac{T}{0.25\\times\\pi\\times d^2}= \\frac{1183}{0.25\\times3.14\\times16^2}=5.88\\ \\text{MPa}");
     doc.addDisplayEquation("\\sigma=5.88\\ \\text{MPa}\\le[f]\\times0.85=55.25\\ \\text{MPa}");
-    doc.addDisplayEquation("\\text{满足要求!}");
+    doc.addDisplayEquation("\\text{满足要求!}").setStyle(RunStyle().color("0000FF").bold().fontSize(12));
 
     // ---- 1.5 吊耳板验算 ----
     doc.addHeading("吊耳板验算", 2);
@@ -326,7 +327,7 @@ int main() {
     doc.addDisplayEquation("\\text{满足要求!}");
     doc.addDisplayEquation("\\frac{4\\times B_e}{3}=\\frac{4\\times40}{3}=53.33\\ \\text{mm}");
     doc.addDisplayEquation("\\frac{4\\times B_e}{3}=53.33\\ \\text{mm}\\le a=65\\ \\text{mm}");
-    doc.addDisplayEquation("\\text{满足要求!}");
+    doc.addParagraph().addRun("满足要求!", RunStyle().color("0000FF").bold());
 
     // ---- 1.5.2 耳板孔净截面处的抗拉强度验算 ----
     doc.addHeading("耳板孔净截面处的抗拉强度验算", 3);
@@ -387,7 +388,7 @@ int main() {
     doc.addDisplayEquation("N_{tb}=\\frac{\\pi\\times d_e^2\\times f_{tb}}{4}= \\frac{3.14\\times14.1^2\\times170}{4\\times1000}=26.62\\ \\text{kN}");
     doc.addDisplayEquation("\\sqrt{\\left(\\frac{V}{N_{vb}}\\right)^2+\\left(\\frac{T}{N_{tb}}\\right)^2}= \\sqrt{\\left(\\frac{7.54}{21.92}\\right)^2+\\left(\\frac{3.77}{26.62}\\right)^2}=0.372");
     doc.addDisplayEquation("0.372\\le1.0");
-    doc.addDisplayEquation("\\text{满足要求!}").setColor("0000FF");
+    doc.addDisplayEquation("\\text{满足要求!}").setStyle(RunStyle().color("0000FF"));
 
     // ---- 1.7 计算结果汇总 ----
     doc.addHeading("计算结果汇总", 2);

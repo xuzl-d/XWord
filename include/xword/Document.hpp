@@ -81,12 +81,6 @@ public:
     /// Set default line spacing multiplier for body text (e.g. 1.25).
     Document& setBodyLineSpacing(double line);
 
-    /// Set default run-level font size (in pt) for body paragraph text.
-    /// When set, all body runs created via addParagraph() will use this size.
-    /// This allows body text to have a different size from table text, which
-    /// inherits the Normal style font size.
-    Document& setBodyRunFontSize(double pt);
-
     /// Set the default RunStyle applied to all body paragraphs.
     /// Controls font size, color, font name for text runs in body paragraphs.
     /// Individual addRun() calls with an explicit RunStyle override this default.

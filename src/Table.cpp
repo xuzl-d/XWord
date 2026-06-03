@@ -9,6 +9,7 @@ struct Cell::Impl {
     std::vector<std::unique_ptr<Paragraph>> m_paragraphs;
     std::vector<CellImage> m_images;
     RunStyle    m_defaultRunStyle;  // set by Table::setDefaultRunStyle
+    VAlignment  m_vAlign = VAlignment::Center;
     std::string m_vMerge;
     int  m_gridSpan = 0;
     bool m_hidden = false;
@@ -92,6 +93,8 @@ void Cell::setVMerge(const std::string& v) { m_impl->m_vMerge = v; }
 void Cell::setGridSpan(int span)           { m_impl->m_gridSpan = span; }
 void Cell::setHidden(bool h)               { m_impl->m_hidden = h; }
 void Cell::setDefaultRunStyle(const RunStyle& s) { m_impl->m_defaultRunStyle = s; }
+void Cell::setVAlign(VAlignment v) { m_impl->m_vAlign = v; }
+VAlignment Cell::vAlign() const { return m_impl->m_vAlign; }
 const std::string& Cell::vMerge() const    { return m_impl->m_vMerge; }
 int  Cell::gridSpan() const                { return m_impl->m_gridSpan; }
 bool Cell::hidden() const                  { return m_impl->m_hidden; }
@@ -125,6 +128,13 @@ Table& Table::setDefaultRunStyle(const RunStyle& style) {
     for (int r = 0; r < m_impl->m_rows; ++r)
         for (int c = 0; c < m_impl->m_cols; ++c)
             m_impl->m_cells[r][c].setDefaultRunStyle(style);
+    return *this;
+}
+
+Table& Table::setVAlign(VAlignment v) {
+    for (int r = 0; r < m_impl->m_rows; ++r)
+        for (int c = 0; c < m_impl->m_cols; ++c)
+            m_impl->m_cells[r][c].setVAlign(v);
     return *this;
 }
 Table& Table::setCaption(const std::string& cap) { m_impl->m_caption = cap; return *this; }
@@ -279,6 +289,7 @@ std::string Table::toXml() const {
             if (cell.hidden()) continue;
 
             xml += "<w:tc><w:tcPr>";
+            xml += "<w:vAlign w:val=\"" + vAlignmentToString(cell.vAlign()) + "\"/>";
             if (cell.gridSpan() > 1)
                 xml += "<w:gridSpan w:val=\"" + std::to_string(cell.gridSpan()) + "\"/>";
             if (!cell.vMerge().empty())

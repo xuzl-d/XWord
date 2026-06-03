@@ -9,6 +9,9 @@ namespace xword {
 /// Paragraph / heading alignment.
 enum class Alignment { Left, Center, Right, Justify };
 
+/// Table cell vertical alignment.
+enum class VAlignment { Top, Center, Bottom };
+
 /// Table border style.
 enum class TableStyle { None, Grid, Light };
 
@@ -106,6 +109,16 @@ inline std::string alignmentToString(Alignment a) {
         case Alignment::Justify: return "both";
     }
     return "left";
+}
+
+/// Convert VAlignment enum to OOXML string.
+inline std::string vAlignmentToString(VAlignment v) {
+    switch (v) {
+        case VAlignment::Top:    return "top";
+        case VAlignment::Center: return "center";
+        case VAlignment::Bottom: return "bottom";
+    }
+    return "top";
 }
 
 /// Convert SectionBreakType enum to OOXML string.

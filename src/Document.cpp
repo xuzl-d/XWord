@@ -106,11 +106,6 @@ Document& Document::setBodyLineSpacing(double line) {
     return *this;
 }
 
-Document& Document::setBodyRunFontSize(double pt) {
-    m_impl->m_bodyRunStyle.fontSize(pt);
-    return *this;
-}
-
 Document& Document::setBodyRunStyle(const RunStyle& style) {
     m_impl->m_bodyRunStyle = style;
     return *this;

@@ -373,11 +373,10 @@ namespace xword {
                     while (p < end && std::isalpha(static_cast<unsigned char>(*p))) ++p;
                     std::string_view cmd(cmdStart, p - cmdStart);
 
-                    if (cmd == "text") {
-                        // \text{...} — extract raw content between braces
-                        // (must NOT use parseGroup which would drop non-ASCII characters)
+                    if (cmd == "text" || cmd == "mathrm") {
+                        // \text{...} / \mathrm{...} — plain (roman) text in math
                         if (p < end && *p == '{') {
-                            ++p; // skip '{'
+                            ++p;
                             int braceDepth = 1;
                             std::string raw;
                             while (p < end && braceDepth > 0) {
@@ -386,6 +385,42 @@ namespace xword {
                                 if (braceDepth > 0) raw += *p++;
                             }
                             if (!raw.empty()) parts.push_back(runPlain(raw));
+                        }
+                        continue;
+                    }
+                    if (cmd == "mathbf") {
+                        // \mathbf{...} — bold text in math
+                        if (p < end && *p == '{') {
+                            ++p;
+                            int braceDepth = 1;
+                            std::string raw;
+                            while (p < end && braceDepth > 0) {
+                                if (*p == '{') ++braceDepth;
+                                else if (*p == '}') { --braceDepth; if (braceDepth == 0) { ++p; break; } }
+                                if (braceDepth > 0) raw += *p++;
+                            }
+                            if (!raw.empty()) {
+                                parts.push_back("<m:r><m:rPr><m:sty m:val=\"b\"/></m:rPr>"
+                                    "<m:t xml:space=\"preserve\">" + xmlEscape(raw) + "</m:t></m:r>");
+                            }
+                        }
+                        continue;
+                    }
+                    if (cmd == "mathit") {
+                        // \mathit{...} — italic text in math (same as default math)
+                        if (p < end && *p == '{') {
+                            ++p;
+                            int braceDepth = 1;
+                            std::string raw;
+                            while (p < end && braceDepth > 0) {
+                                if (*p == '{') ++braceDepth;
+                                else if (*p == '}') { --braceDepth; if (braceDepth == 0) { ++p; break; } }
+                                if (braceDepth > 0) raw += *p++;
+                            }
+                            if (!raw.empty()) {
+                                parts.push_back("<m:r><m:rPr><m:sty m:val=\"i\"/></m:rPr>"
+                                    "<m:t xml:space=\"preserve\">" + xmlEscape(raw) + "</m:t></m:r>");
+                            }
                         }
                         continue;
                     }
@@ -523,16 +558,6 @@ namespace xword {
 
     Equation& Equation::setMode(EquationMode mode) {
         m_impl->m_mode = mode;
-        return *this;
-    }
-
-    Equation& Equation::setFontSize(int halfPt) {
-        m_impl->m_style.fontSize(halfPt / 2.0);
-        return *this;
-    }
-
-    Equation& Equation::setColor(const std::string& hexColor) {
-        m_impl->m_style.color(hexColor);
         return *this;
     }
 

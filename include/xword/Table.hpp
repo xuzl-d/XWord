@@ -78,6 +78,10 @@ public:
     /// Set the default RunStyle for paragraphs created in this cell.
     void setDefaultRunStyle(const RunStyle& s);
 
+    /// Set vertical alignment for this cell.
+    void setVAlign(VAlignment v);
+    VAlignment vAlign() const;
+
     const std::string& vMerge()    const;
     int  gridSpan() const;
     bool hidden()   const;
@@ -118,6 +122,9 @@ public:
     /// Set the default RunStyle for all cells in this table.
     /// Applied automatically to every Cell::addParagraph() call.
     Table& setDefaultRunStyle(const RunStyle& style);
+
+    /// Set vertical alignment for all cells in this table.
+    Table& setVAlign(VAlignment v);
 
     /// Caption text shown above the table.
     Table& setCaption(const std::string& cap);

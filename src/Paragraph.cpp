@@ -90,26 +90,6 @@ Paragraph& Paragraph::setDefaultRunStyle(const RunStyle& style) {
     return *this;
 }
 
-Paragraph& Paragraph::setDefaultRunFontSize(int pt) {
-    m_impl->m_defaultRunStyle.fontSize(static_cast<double>(pt));
-    return *this;
-}
-
-Paragraph& Paragraph::setEquationFontSize(int halfPt) {
-    m_impl->m_defaultRunStyle.fontSize(halfPt / 2.0);
-    return *this;
-}
-
-Paragraph& Paragraph::setEquationColor(const std::string& hexColor) {
-    m_impl->m_defaultRunStyle.color(hexColor);
-    return *this;
-}
-
-Paragraph& Paragraph::setEquationStyle(const RunStyle& style) {
-    m_impl->m_defaultRunStyle = style;
-    return *this;
-}
-
 std::string Paragraph::toXml() const {
     using namespace internal;
 
