@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Types.hpp"
+#include "Run.hpp"
 #include <memory>
 #include <string>
 
@@ -30,6 +31,15 @@ public:
     /// Set the font size for this equation in half-points (e.g. 24 for 12pt).
     /// 0 (default) means inherit from the document style.
     Equation& setFontSize(int halfPt);
+
+    /// Set the text color for this equation (hex RGB/RRGGBB, e.g. "FF0000").
+    /// Empty string (default) means inherit from the document style.
+    Equation& setColor(const std::string& hexColor);
+
+    /// Apply a RunStyle directly to this equation.
+    /// Supports color, font, bold, italic, underline.
+    /// fontSize() in the RunStyle is in points and overrides setFontSize().
+    Equation& setStyle(const RunStyle& style);
 
     /// The original LaTeX source.
     const std::string& latex() const;

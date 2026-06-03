@@ -8,6 +8,7 @@ namespace xword {
 struct Cell::Impl {
     std::vector<std::unique_ptr<Paragraph>> m_paragraphs;
     std::vector<CellImage> m_images;
+    RunStyle    m_defaultRunStyle;  // set by Table::setDefaultRunStyle
     std::string m_vMerge;
     int  m_gridSpan = 0;
     bool m_hidden = false;
@@ -18,6 +19,7 @@ struct Table::Impl {
     int m_cols;
     int m_headerRow = -1;
     TableStyle m_style = TableStyle::None;
+    RunStyle   m_defaultRunStyle;
     std::string m_caption;
     std::vector<std::vector<Cell>> m_cells;
     std::vector<double> m_columnWidthRatios;  // Width ratio for each column (default 1.0)
@@ -32,6 +34,8 @@ Cell& Cell::operator=(Cell&&) noexcept = default;
 
 Paragraph& Cell::addParagraph(const std::string& text) {
     auto p = std::make_unique<Paragraph>();
+    if (m_impl->m_defaultRunStyle.hasFormatting())
+        p->setDefaultRunStyle(m_impl->m_defaultRunStyle);
     if (!text.empty()) p->addRun(text);
     p->setFirstLineIndent(0);
     p->setSpacingAfter(0);
@@ -41,6 +45,8 @@ Paragraph& Cell::addParagraph(const std::string& text) {
 
 Paragraph& Cell::addParagraph(const std::string& text, const RunStyle& style) {
     auto p = std::make_unique<Paragraph>();
+    if (m_impl->m_defaultRunStyle.hasFormatting())
+        p->setDefaultRunStyle(m_impl->m_defaultRunStyle);
     if (!text.empty()) p->addRun(text, style);
     p->setFirstLineIndent(0);
     p->setSpacingAfter(0);
@@ -85,6 +91,7 @@ CellImage& Cell::addImage(const std::wstring& filepath, int width, int height) {
 void Cell::setVMerge(const std::string& v) { m_impl->m_vMerge = v; }
 void Cell::setGridSpan(int span)           { m_impl->m_gridSpan = span; }
 void Cell::setHidden(bool h)               { m_impl->m_hidden = h; }
+void Cell::setDefaultRunStyle(const RunStyle& s) { m_impl->m_defaultRunStyle = s; }
 const std::string& Cell::vMerge() const    { return m_impl->m_vMerge; }
 int  Cell::gridSpan() const                { return m_impl->m_gridSpan; }
 bool Cell::hidden() const                  { return m_impl->m_hidden; }
@@ -113,6 +120,13 @@ Table& Table::operator=(Table&&) noexcept = default;
 
 Table& Table::setHeaderRow(int row) { m_impl->m_headerRow = row; return *this; }
 Table& Table::setStyle(TableStyle style) { m_impl->m_style = style; return *this; }
+Table& Table::setDefaultRunStyle(const RunStyle& style) {
+    m_impl->m_defaultRunStyle = style;
+    for (int r = 0; r < m_impl->m_rows; ++r)
+        for (int c = 0; c < m_impl->m_cols; ++c)
+            m_impl->m_cells[r][c].setDefaultRunStyle(style);
+    return *this;
+}
 Table& Table::setCaption(const std::string& cap) { m_impl->m_caption = cap; return *this; }
 const std::string& Table::caption() const { return m_impl->m_caption; }
 

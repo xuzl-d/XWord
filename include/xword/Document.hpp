@@ -87,6 +87,19 @@ public:
     /// inherits the Normal style font size.
     Document& setBodyRunFontSize(double pt);
 
+    /// Set the default RunStyle applied to all body paragraphs.
+    /// Controls font size, color, font name for text runs in body paragraphs.
+    /// Individual addRun() calls with an explicit RunStyle override this default.
+    Document& setBodyRunStyle(const RunStyle& style);
+
+    /// Set the default RunStyle for display equations (行间公式).
+    /// Applied automatically to every addDisplayEquation() call.
+    Document& setDisplayEquationStyle(const RunStyle& style);
+
+    /// Set the default RunStyle for table cell content.
+    /// Applied automatically to every Cell::addParagraph() call.
+    Document& setTableRunStyle(const RunStyle& style);
+
     // ── Headings ───────────────────────────────────────────
 
     /// Add a numbered heading (level 1–6).

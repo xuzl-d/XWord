@@ -510,7 +510,7 @@ namespace xword {
     struct Equation::Impl {
         std::string  m_latex;
         EquationMode m_mode = EquationMode::Inline;
-        int          m_fontSizeHalfPt = 0;  // 0 = inherit from document
+        RunStyle     m_style;
     };
 
     Equation::Equation(const std::string& latex, EquationMode mode)
@@ -527,7 +527,17 @@ namespace xword {
     }
 
     Equation& Equation::setFontSize(int halfPt) {
-        m_impl->m_fontSizeHalfPt = halfPt;
+        m_impl->m_style.fontSize(halfPt / 2.0);
+        return *this;
+    }
+
+    Equation& Equation::setColor(const std::string& hexColor) {
+        m_impl->m_style.color(hexColor);
+        return *this;
+    }
+
+    Equation& Equation::setStyle(const RunStyle& style) {
+        m_impl->m_style = style;
         return *this;
     }
 
@@ -541,16 +551,28 @@ namespace xword {
         const char* end = p + m_impl->m_latex.size();
         std::string content = parseLaTeX(p, end);
 
-        // Math runs take their font size from <w:rPr><w:sz>, NOT from <m:rPr>
-        // (there is no <m:sz> element in OMML). Inject a <w:rPr> block into
-        // every <m:r>, placed AFTER any existing <m:rPr> (e.g. sty="p" from
-        // \text{}) — Word requires m:rPr first, then w:rPr within m:r.
-        if (m_impl->m_fontSizeHalfPt > 0) {
-            std::string sz = std::to_string(m_impl->m_fontSizeHalfPt);
-            std::string wRPr = "<w:rPr>"
-                               "<w:sz w:val=\"" + sz + "\"/>"
-                               "<w:szCs w:val=\"" + sz + "\"/>"
-                               "</w:rPr>";
+        // Math runs take their style from <w:rPr> (e.g. <w:sz>, <w:color>),
+        // NOT from <m:rPr> (there are no <m:sz>/<m:color> in OMML). Inject a
+        // <w:rPr> block into every <m:r>, placed AFTER any existing <m:rPr>
+        // (e.g. sty="p" from \text{}) — Word requires m:rPr first, then w:rPr.
+        const auto& s = m_impl->m_style;
+        bool hasStyle = s.hasFormatting();
+        if (hasStyle) {
+            std::string wRPr = "<w:rPr>";
+            if (s.fontSize() > 0) {
+                int halfPt = static_cast<int>(s.fontSize() * 2);
+                wRPr += "<w:sz w:val=\"" + std::to_string(halfPt) + "\"/>"
+                        "<w:szCs w:val=\"" + std::to_string(halfPt) + "\"/>";
+            }
+            if (s.bold())      wRPr += "<w:b/>";
+            if (s.italic())    wRPr += "<w:i/>";
+            if (s.underline()) wRPr += "<w:u w:val=\"single\"/>";
+            if (!s.color().empty())
+                wRPr += "<w:color w:val=\"" + s.color() + "\"/>";
+            if (!s.font().empty())
+                wRPr += "<w:rFonts w:ascii=\"" + s.font() + "\" w:hAnsi=\"" + s.font() + "\"/>";
+            wRPr += "</w:rPr>";
+
             std::string result;
             size_t pos = 0;
             while (true) {

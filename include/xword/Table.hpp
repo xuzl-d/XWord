@@ -75,6 +75,9 @@ public:
     /// Mark cell as hidden (covered by a span).
     void setHidden(bool h);
 
+    /// Set the default RunStyle for paragraphs created in this cell.
+    void setDefaultRunStyle(const RunStyle& s);
+
     const std::string& vMerge()    const;
     int  gridSpan() const;
     bool hidden()   const;
@@ -111,6 +114,10 @@ public:
 
     /// Border style preset.
     Table& setStyle(TableStyle style);
+
+    /// Set the default RunStyle for all cells in this table.
+    /// Applied automatically to every Cell::addParagraph() call.
+    Table& setDefaultRunStyle(const RunStyle& style);
 
     /// Caption text shown above the table.
     Table& setCaption(const std::string& cap);

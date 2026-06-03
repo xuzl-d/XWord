@@ -73,11 +73,23 @@ public:
     /// 0 (default) means inherit from the document style.
     Paragraph& setEquationFontSize(int halfPt);
 
-    /// Set default font size (in points) for text runs in this paragraph that
-    /// do not specify their own font size. 0 (default) means inherit from
-    /// the document Normal style. Document::addParagraph populates this from
-    /// the body run font size so that runs added via .addRun(text) match the
-    /// auto-styled initial text run.
+    /// Set text color for inline equations in this paragraph (hex RRGGBB).
+    /// Empty string (default) means inherit from the document style.
+    Paragraph& setEquationColor(const std::string& hexColor);
+
+    /// Apply a RunStyle to all inline equations in this paragraph.
+    /// Supports color, font, bold, etc. Does not affect font size
+    /// (use setEquationFontSize for that).
+    Paragraph& setEquationStyle(const RunStyle& style);
+
+    /// Set the default RunStyle for this paragraph.
+    /// Applied to all text runs and inline equations that do not specify
+    /// their own style. Document::addParagraph populates this from the
+    /// document's body run style.
+    Paragraph& setDefaultRunStyle(const RunStyle& style);
+
+    /// @copydoc setDefaultRunStyle
+    /// Convenience overload that sets only the font size (points).
     Paragraph& setDefaultRunFontSize(int pt);
     /// @}
 

@@ -19,8 +19,7 @@ struct Paragraph::Impl {
     int        m_firstLineIndent = -1;
     int        m_spacingAfter = -1;
     int        m_spacingBefore = -1;
-    int        m_equationFontSize = 0;  // half-pts; 0 = inherit from style
-    int        m_defaultRunFontSize = 0;  // pts; 0 = inherit from Normal style
+    RunStyle   m_defaultRunStyle;  // default for text runs & inline equations
 };
 
 Paragraph::Paragraph()
@@ -86,13 +85,28 @@ Paragraph& Paragraph::setSpacingBefore(int twips) {
     return *this;
 }
 
-Paragraph& Paragraph::setEquationFontSize(int halfPt) {
-    m_impl->m_equationFontSize = halfPt;
+Paragraph& Paragraph::setDefaultRunStyle(const RunStyle& style) {
+    m_impl->m_defaultRunStyle = style;
     return *this;
 }
 
 Paragraph& Paragraph::setDefaultRunFontSize(int pt) {
-    m_impl->m_defaultRunFontSize = pt;
+    m_impl->m_defaultRunStyle.fontSize(static_cast<double>(pt));
+    return *this;
+}
+
+Paragraph& Paragraph::setEquationFontSize(int halfPt) {
+    m_impl->m_defaultRunStyle.fontSize(halfPt / 2.0);
+    return *this;
+}
+
+Paragraph& Paragraph::setEquationColor(const std::string& hexColor) {
+    m_impl->m_defaultRunStyle.color(hexColor);
+    return *this;
+}
+
+Paragraph& Paragraph::setEquationStyle(const RunStyle& style) {
+    m_impl->m_defaultRunStyle = style;
     return *this;
 }
 
@@ -120,8 +134,8 @@ std::string Paragraph::toXml() const {
     for (const auto& run : m_impl->m_runs) {
         if (run.kind == RunKind::InlineEquation) {
             Equation eq(run.content, EquationMode::Inline);
-            if (m_impl->m_equationFontSize > 0)
-                eq.setFontSize(m_impl->m_equationFontSize);
+            if (m_impl->m_defaultRunStyle.hasFormatting())
+                eq.setStyle(m_impl->m_defaultRunStyle);
             xml += "<w:r>" + eq.toXml() + "</w:r>";
         } else if (run.kind == RunKind::FootnoteRef) {
             xml += "<w:r>"
@@ -136,11 +150,17 @@ std::string Paragraph::toXml() const {
                    "<w:r><w:t>1</w:t></w:r>"
                    "<w:r><w:fldChar w:fldCharType=\"end\"/></w:r>";
         } else {
-            // Effective font size: run style overrides the paragraph default.
-            int effSize = run.style.fontSize() > 0
-                        ? run.style.fontSize()
-                        : m_impl->m_defaultRunFontSize;
-            bool needRPr = run.style.hasFormatting() || effSize > 0;
+            // Effective font size (pt): run style overrides the paragraph default.
+            double effSize = run.style.fontSize() > 0
+                           ? run.style.fontSize()
+                           : m_impl->m_defaultRunStyle.fontSize();
+            // Effective color/font: run style overrides paragraph default
+            const auto& def = m_impl->m_defaultRunStyle;
+            std::string effColor = !run.style.color().empty() ? run.style.color() : def.color();
+            std::string effFont  = !run.style.font().empty()  ? run.style.font()  : def.font();
+
+            bool needRPr = run.style.hasFormatting() || effSize > 0
+                        || !effColor.empty() || !effFont.empty();
             xml += "<w:r>";
             if (needRPr) {
                 xml += "<w:rPr>";
@@ -148,13 +168,14 @@ std::string Paragraph::toXml() const {
                 if (run.style.italic()) xml += "<w:i/>";
                 if (run.style.underline()) xml += "<w:u w:val=\"single\"/>";
                 if (effSize > 0) {
-                    xml += "<w:sz w:val=\"" + std::to_string(effSize * 2) + "\"/>";
-                    xml += "<w:szCs w:val=\"" + std::to_string(effSize * 2) + "\"/>";
+                    int halfPt = static_cast<int>(effSize * 2);
+                    xml += "<w:sz w:val=\"" + std::to_string(halfPt) + "\"/>";
+                    xml += "<w:szCs w:val=\"" + std::to_string(halfPt) + "\"/>";
                 }
-                if (!run.style.color().empty())
-                    xml += "<w:color w:val=\"" + run.style.color() + "\"/>";
-                if (!run.style.font().empty())
-                    xml += "<w:rFonts w:ascii=\"" + run.style.font() + "\" w:hAnsi=\"" + run.style.font() + "\"/>";
+                if (!effColor.empty())
+                    xml += "<w:color w:val=\"" + effColor + "\"/>";
+                if (!effFont.empty())
+                    xml += "<w:rFonts w:ascii=\"" + effFont + "\" w:hAnsi=\"" + effFont + "\"/>";
                 xml += "</w:rPr>";
             }
             xml += "<w:t xml:space=\"preserve\">" + xmlEscape(run.content) + "</w:t>";

@@ -49,13 +49,14 @@ struct Document::Impl {
     std::string     m_bodyFontHAnsi;
     double          m_bodyFontSize = 0;        // 0 = use default (11pt)
     double          m_bodyLineSpacing = 0;     // 0 = use default (1.15x)
-    double          m_bodyRunFontSize = 0;     // explicit run-level font size for body text (0=none)
-    std::string     m_bodyRunFont;             // explicit run-level font name for body text
+    RunStyle        m_bodyRunStyle;            // default run style for body paragraphs
+    RunStyle        m_displayEquationStyle;    // default style for display equations
+    RunStyle        m_tableRunStyle;           // default run style for table cells
     bool            m_imageNumbering = false;
-    std::string     m_imageNumPrefix = "å¾";
+    std::string     m_imageNumPrefix = "图";
     CaptionNumStyle m_imageNumStyle = CaptionNumStyle::Sequential;
     bool            m_tableNumbering = false;
-    std::string     m_tableNumPrefix = "è¡¨";
+    std::string     m_tableNumPrefix = "表";
     CaptionNumStyle m_tableNumStyle = CaptionNumStyle::Sequential;
     std::vector<FootnoteInfo>   m_footnotes;
     int                         m_nextFootnoteId = 1;
@@ -106,7 +107,22 @@ Document& Document::setBodyLineSpacing(double line) {
 }
 
 Document& Document::setBodyRunFontSize(double pt) {
-    m_impl->m_bodyRunFontSize = pt;
+    m_impl->m_bodyRunStyle.fontSize(pt);
+    return *this;
+}
+
+Document& Document::setBodyRunStyle(const RunStyle& style) {
+    m_impl->m_bodyRunStyle = style;
+    return *this;
+}
+
+Document& Document::setDisplayEquationStyle(const RunStyle& style) {
+    m_impl->m_displayEquationStyle = style;
+    return *this;
+}
+
+Document& Document::setTableRunStyle(const RunStyle& style) {
+    m_impl->m_tableRunStyle = style;
     return *this;
 }
 
@@ -233,10 +249,10 @@ Document& Document::addTOC(const std::string& levels, const std::string& title) 
 
 Paragraph& Document::addParagraph(const std::string& text) {
     auto p = std::make_unique<Paragraph>();
-    // Apply default run font size so subsequent .addRun(text) calls inherit
-    // the body text size instead of falling back to the Normal style size.
-    if (m_impl->m_bodyRunFontSize > 0) {
-        p->setDefaultRunFontSize(static_cast<int>(m_impl->m_bodyRunFontSize));
+    // Copy document-level default run style to the paragraph.
+    // All text runs and inline equations in this paragraph inherit it.
+    if (m_impl->m_bodyRunStyle.hasFormatting()) {
+        p->setDefaultRunStyle(m_impl->m_bodyRunStyle);
     }
     if (!text.empty()) {
         p->addRun(text);
@@ -244,10 +260,6 @@ Paragraph& Document::addParagraph(const std::string& text) {
     // Apply default indent
     if (m_impl->m_defaultIndent > 0) {
         p->setFirstLineIndent(m_impl->m_defaultIndent);
-    }
-    // Apply equation font size to match body text
-    if (m_impl->m_bodyRunFontSize > 0) {
-        p->setEquationFontSize(static_cast<int>(m_impl->m_bodyRunFontSize * 2));
     }
     Paragraph* ptr = p.get();
     m_impl->m_paragraphs.push_back(std::move(p));
@@ -307,6 +319,9 @@ Image& Document::addImage(const std::wstring& filepath) {
 Table& Document::addTable(int rows, int cols) {
     auto tbl = std::make_unique<Table>(rows, cols);
     Table* ptr = tbl.get();
+    if (m_impl->m_tableRunStyle.hasFormatting()) {
+        ptr->setDefaultRunStyle(m_impl->m_tableRunStyle);
+    }
     m_impl->m_tables.push_back(std::move(tbl));
 
     Element e;
@@ -345,6 +360,7 @@ BulletList& Document::addOrderedList() {
 
 Equation& Document::addEquation(const std::string& latex) {
     auto eq = std::make_unique<Equation>(latex, EquationMode::Inline);
+    eq->setStyle(m_impl->m_bodyRunStyle);
     Equation* ptr = eq.get();
     m_impl->m_equations.push_back(std::move(eq));
 
@@ -357,6 +373,11 @@ Equation& Document::addEquation(const std::string& latex) {
 
 Equation& Document::addDisplayEquation(const std::string& latex) {
     auto eq = std::make_unique<Equation>(latex, EquationMode::Display);
+    // Fall back to body run style if display equation style is unset.
+    if (m_impl->m_displayEquationStyle.hasFormatting())
+        eq->setStyle(m_impl->m_displayEquationStyle);
+    else if (m_impl->m_bodyRunStyle.hasFormatting())
+        eq->setStyle(m_impl->m_bodyRunStyle);
     Equation* ptr = eq.get();
     m_impl->m_equations.push_back(std::move(eq));
 
@@ -634,8 +655,6 @@ void Document::buildDocumentXml(std::string& xml) {
                 }
                 case ElementType::Equation: {
                     Equation* eq = elem->data.equation;
-                    int eqSz = static_cast<int>(m_impl->m_bodyRunFontSize * 2);
-                    if (eqSz > 0) eq->setFontSize(eqSz);
                     if (eq->mode() == EquationMode::Display)
                         xml += "<w:p>" + eq->toXml() + "</w:p>";
                     else
@@ -1263,7 +1282,7 @@ bool Document::save(const std::string& filepath) {
         // Per-section headers and footers
         for (size_t si = 0; si < m_impl->m_sections.size(); ++si) {
             const auto& sec = m_impl->m_sections[si];
-            std::string partName = (si == 0) ? "" : std::to_string(si + 1);
+            std::string partName = std::to_string(si + 1);
             if (sec.header) {
                 std::string hdrXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                     "<w:hdr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""

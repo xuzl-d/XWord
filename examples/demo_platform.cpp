@@ -387,7 +387,7 @@ int main() {
     doc.addDisplayEquation("N_{tb}=\\frac{\\pi\\times d_e^2\\times f_{tb}}{4}= \\frac{3.14\\times14.1^2\\times170}{4\\times1000}=26.62\\ \\text{kN}");
     doc.addDisplayEquation("\\sqrt{\\left(\\frac{V}{N_{vb}}\\right)^2+\\left(\\frac{T}{N_{tb}}\\right)^2}= \\sqrt{\\left(\\frac{7.54}{21.92}\\right)^2+\\left(\\frac{3.77}{26.62}\\right)^2}=0.372");
     doc.addDisplayEquation("0.372\\le1.0");
-    doc.addDisplayEquation("\\text{满足要求!}");
+    doc.addDisplayEquation("\\text{满足要求!}").setColor("0000FF");
 
     // ---- 1.7 计算结果汇总 ----
     doc.addHeading("计算结果汇总", 2);
