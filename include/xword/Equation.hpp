@@ -37,6 +37,9 @@ public:
     /// Current rendering mode.
     EquationMode mode() const;
 
+    /// The RunStyle applied to this equation (mutable for chaining).
+    RunStyle& getStyle();
+
     /// Build OMML XML for this equation.
     std::string toXml() const;
 

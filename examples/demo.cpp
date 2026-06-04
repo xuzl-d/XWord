@@ -81,7 +81,7 @@ int main() {
     doc.addParagraph("下面是一个带边框的学生成绩表：");
 
     auto& table = doc.addTable(5, 4);
-    table.setHeaderRow(0).setStyle(TableStyle::Grid).setCaption("学生成绩表");
+    table.setHeaderRow(0).setBorderStyle(TableStyle::Grid).setCaption("学生成绩表");
 
     table.cell(0, 0).addParagraph("姓名", RunStyle().bold());
     table.cell(0, 1).addParagraph("语文");
@@ -115,7 +115,7 @@ int main() {
     doc.addHeading("合并单元格表格", 2);
 
     auto& table2 = doc.addTable(3, 3);
-    table2.setStyle(TableStyle::Grid).setCaption("合并示例");
+    table2.setBorderStyle(TableStyle::Grid).setCaption("合并示例");
 
     // Merge first row entirely
     table2.mergeCells(0, 0, 0, 2);
@@ -133,7 +133,7 @@ int main() {
     doc.addHeading("表格中的公式", 3);
 
     auto& table3 = doc.addTable(3, 2);
-    table3.setStyle(TableStyle::Grid).setHeaderRow(0).setCaption("常见公式");
+    table3.setBorderStyle(TableStyle::Grid).setHeaderRow(0).setCaption("常见公式");
 
     table3.cell(0, 0).addParagraph("名称");
     table3.cell(0, 1).addParagraph("公式");
@@ -146,7 +146,7 @@ int main() {
 
     doc.addParagraph("表格中的公式可以和文字混排：");
     auto& table4 = doc.addTable(2, 2);
-    table4.setStyle(TableStyle::Grid).setCaption("公式混排");
+    table4.setBorderStyle(TableStyle::Grid).setCaption("公式混排");
     table4.cell(0, 0).addParagraph()
         .addRun("当 ")
         .addEquation("\\Delta = b^2 - 4ac > 0")
@@ -161,7 +161,7 @@ int main() {
     doc.addHeading("自定义列宽比例表格", 3);
   
     auto& table5 = doc.addTable(3, 3);
-    table5.setStyle(TableStyle::Grid).setCaption("列宽比例示例");
+    table5.setBorderStyle(TableStyle::Grid).setCaption("列宽比例示例");
     // Set column width ratios: first column 1.5x, second 1.0x, third 2.0x
     table5.setColumnWidths({1.5, 1.0, 2.0});
     
@@ -299,7 +299,7 @@ int main() {
     // 故意添加一个不存在的图片：库会跳过它，文档仍合法可打开
     doc.addImage("nonexistent_xyz.png").setCaption("缺失图片测试");
     auto& tableCh2 = doc.addTable(2, 2);
-    tableCh2.setStyle(TableStyle::Grid).setCaption(u8"第二章演示表");
+    tableCh2.setBorderStyle(TableStyle::Grid).setCaption(u8"第二章演示表");
     tableCh2.cell(0, 0).addParagraph("A");
     tableCh2.cell(0, 1).addParagraph("B");
     tableCh2.cell(1, 0).addParagraph("C");

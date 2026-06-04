@@ -247,7 +247,7 @@ Paragraph& Document::addParagraph(const std::string& text) {
     // Copy document-level default run style to the paragraph.
     // All text runs and inline equations in this paragraph inherit it.
     if (m_impl->m_bodyRunStyle.hasFormatting()) {
-        p->setDefaultRunStyle(m_impl->m_bodyRunStyle);
+        p->setStyle(m_impl->m_bodyRunStyle);
     }
     if (!text.empty()) {
         p->addRun(text);
@@ -315,7 +315,7 @@ Table& Document::addTable(int rows, int cols) {
     auto tbl = std::make_unique<Table>(rows, cols);
     Table* ptr = tbl.get();
     if (m_impl->m_tableRunStyle.hasFormatting()) {
-        ptr->setDefaultRunStyle(m_impl->m_tableRunStyle);
+        ptr->setStyle(m_impl->m_tableRunStyle);
     }
     m_impl->m_tables.push_back(std::move(tbl));
 

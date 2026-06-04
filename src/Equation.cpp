@@ -560,8 +560,15 @@ namespace xword {
                 }
 
                 // 运算符和标点
-                if (strchr("+-=<>*/,.:;!?()[]|'`", *p)) {
+                if (strchr("+-=<>*/,.:;!?|'`", *p)) {
                     parts.push_back(run(std::string(1, *p)));
+                    ++p;
+                    continue;
+                }
+
+                // 括号 — 直立（非斜体）
+                if (strchr("()[]", *p)) {
+                    parts.push_back(runPlain(std::string(1, *p)));
                     ++p;
                     continue;
                 }
@@ -626,6 +633,7 @@ namespace xword {
 
     const std::string& Equation::latex() const { return m_impl->m_latex; }
     EquationMode       Equation::mode()  const { return m_impl->m_mode; }
+    RunStyle&    Equation::getStyle()    { return m_impl->m_style; }
 
     std::string Equation::toXml() const {
         if (m_impl->m_latex.empty()) return "";

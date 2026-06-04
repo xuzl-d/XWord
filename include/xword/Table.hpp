@@ -75,8 +75,10 @@ public:
     /// Mark cell as hidden (covered by a span).
     void setHidden(bool h);
 
-    /// Set the default RunStyle for paragraphs created in this cell.
-    void setDefaultRunStyle(const RunStyle& s);
+    /// Set the RunStyle for paragraphs created in this cell.
+    void setStyle(const RunStyle& s);
+    /// Get the RunStyle for this cell (mutable for chaining).
+    RunStyle& getStyle();
 
     /// Set vertical alignment for this cell.
     void setVAlign(VAlignment v);
@@ -117,11 +119,13 @@ public:
     Table& setHeaderRow(int row);
 
     /// Border style preset.
-    Table& setStyle(TableStyle style);
+    Table& setBorderStyle(TableStyle style);
 
-    /// Set the default RunStyle for all cells in this table.
+    /// Set the RunStyle for all cells in this table.
     /// Applied automatically to every Cell::addParagraph() call.
-    Table& setDefaultRunStyle(const RunStyle& style);
+    Table& setStyle(const RunStyle& style);
+    /// Get the RunStyle for this table (mutable for chaining).
+    RunStyle& getStyle();
 
     /// Set vertical alignment for all cells in this table.
     Table& setVAlign(VAlignment v);

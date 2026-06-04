@@ -85,12 +85,17 @@ Paragraph& Paragraph::setSpacingBefore(int twips) {
     return *this;
 }
 
-Paragraph& Paragraph::setDefaultRunStyle(const RunStyle& style) {
+Paragraph& Paragraph::setStyle(const RunStyle& style) {
     m_impl->m_defaultRunStyle = style;
     return *this;
 }
 
-std::string Paragraph::toXml() const {
+RunStyle &Paragraph::getStyle()
+{
+    return m_impl->m_defaultRunStyle;
+}
+std::string Paragraph::toXml() const
+{
     using namespace internal;
 
     std::string xml;

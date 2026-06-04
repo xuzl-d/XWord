@@ -73,8 +73,10 @@ public:
     /// Applied to all text runs and inline equations that do not specify
     /// their own style. Document::addParagraph populates this from the
     /// document's body run style.
-    Paragraph& setDefaultRunStyle(const RunStyle& style);
+    Paragraph& setStyle(const RunStyle& style);
     /// @}
+
+    RunStyle& getStyle();
 
     /// Build OOXML paragraph XML (internal use).
     std::string toXml() const;

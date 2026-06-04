@@ -29,7 +29,7 @@ int main() {
     {
         Document doc;
         auto& table = doc.addTable(2, 2);
-        table.setStyle(TableStyle::Grid);
+        table.setBorderStyle(TableStyle::Grid);
         table.cell(0, 0).addParagraph("A");
         table.cell(0, 1).addParagraph("B");
         table.cell(1, 0).addParagraph("C");

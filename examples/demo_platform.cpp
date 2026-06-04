@@ -69,7 +69,7 @@ int main() {
     // ---- 表1 架体布置参数 ----
     {
         auto& t = doc.addTable(5, 4);
-        t.setStyle(TableStyle::Grid).setCaption("架体布置参数（单位：mm）");
+        t.setBorderStyle(TableStyle::Grid).setCaption("架体布置参数（单位：mm）");
 
         t.cell(0, 0).addParagraph("悬挑钢梁类型");   t.cell(0, 1).addParagraph("热轧普通工字钢");
         t.cell(0, 2).addParagraph("悬挑钢梁截面");   t.cell(0, 3).addParagraph("I18");
@@ -90,7 +90,7 @@ int main() {
     // ---- 表2 架体其他参数 ----
     {
         auto& t = doc.addTable(4, 4);
-        t.setStyle(TableStyle::Grid).setCaption("架体其他参数（单位：mm）");
+        t.setBorderStyle(TableStyle::Grid).setCaption("架体其他参数（单位：mm）");
 
         t.cell(0, 0).addParagraph("外锚固点距建筑边缘距离");
         t.cell(0, 1).addParagraph("1400");
@@ -127,7 +127,7 @@ int main() {
     // ---- 表3 各主梁计算结果 ----
     {
         auto& t = doc.addTable(5, 3);
-        t.setStyle(TableStyle::Grid).setCaption("各主梁计算结果");
+        t.setBorderStyle(TableStyle::Grid).setCaption("各主梁计算结果");
 
         t.cell(0, 0).addParagraph("主梁位置(mm)");
         t.cell(0, 1).addParagraph("最大弯矩(kN·m)");
@@ -235,7 +235,7 @@ int main() {
     // 表4
     {
         auto& t = doc.addTable(4, 5);
-        t.setStyle(TableStyle::Grid).setCaption("各悬挑主梁支座反力设计值");
+        t.setBorderStyle(TableStyle::Grid).setCaption("各悬挑主梁支座反力设计值");
 
         t.cell(0, 0).addParagraph("位置(mm)");
         t.cell(0, 1).addParagraph("x=0");    t.cell(0, 2).addParagraph("x=1200");
@@ -257,7 +257,7 @@ int main() {
     // 表5
     {
         auto& t = doc.addTable(4, 5);
-        t.setStyle(TableStyle::Grid).setCaption("各悬挑主梁支座反力标准值");
+        t.setBorderStyle(TableStyle::Grid).setCaption("各悬挑主梁支座反力标准值");
 
         t.cell(0, 0).addParagraph("位置(mm)");
         t.cell(0, 1).addParagraph("x=0");    t.cell(0, 2).addParagraph("x=1200");
@@ -335,7 +335,7 @@ int main() {
     doc.addDisplayEquation("b_1=\\min\\left(B_e,b-\\frac{d_0}{3}\\right)= \\min\\left(40,50-\\frac{25}{3}\\right)=40.0\\ \\text{mm}");
     doc.addDisplayEquation("\\sigma_1=\\frac{N_d}{2\\times t\\times b_1}= \\frac{16854}{2\\times12\\times40.0}=17.56\\ \\text{MPa}");
     doc.addDisplayEquation("\\sigma_1=17.56\\ \\text{MPa}\\le[f_t]=205\\ \\text{MPa}");
-    doc.addDisplayEquation("\\text{满足要求!}");
+    doc.addDisplayEquation("\\text{满足要求!}").getStyle().color("0000FF");
 
     // ---- 1.5.3 耳板端部截面抗拉强度验算 ----
     doc.addHeading("耳板端部截面抗拉强度验算", 3);
@@ -352,7 +352,7 @@ int main() {
     doc.addDisplayEquation("Z=\\sqrt{\\left(65+0.5\\times25\\right)^2-\\left(0.5\\times25\\right)^2}=76.5\\ \\text{mm}");
     doc.addDisplayEquation("\\tau=\\frac{N_d}{2\\times t\\times Z}= \\frac{16854}{2\\times12\\times76.5}=9.18\\ \\text{MPa}");
     doc.addDisplayEquation("\\tau=9.18\\ \\text{MPa}\\le[f_v]=125\\ \\text{MPa}");
-    doc.addDisplayEquation("\\text{满足要求!}");
+    doc.addDisplayEquation("\\text{满足要求!}").getStyle().color("0000FF");
 
     // ---- 1.5.5 耳板与主梁焊缝强度验算 ----
     doc.addHeading("耳板与主梁焊缝强度验算", 3);
@@ -363,14 +363,14 @@ int main() {
     doc.addDisplayEquation("\\tau_{f1}=\\frac{V'}{0.7\\times h_f\\times l_{w1}}= \\frac{7.54}{0.7\\times8.0\\times120}=11.22\\ \\text{MPa}");
     doc.addDisplayEquation("\\sqrt{\\left(\\frac{\\sigma_f}{\\beta_f}\\right)^2+\\tau_{f1}^2}= \\sqrt{\\left(\\frac{22.43}{1.22}\\right)^2+11.22^2}=21.54\\ \\text{MPa}");
     doc.addDisplayEquation("21.54\\ \\text{MPa}\\le[f_f]=160\\ \\text{MPa}");
-    doc.addDisplayEquation("\\text{满足要求!}");
+    doc.addDisplayEquation("\\text{满足要求!}").getStyle().color("0000FF");
 
     // ---- 1.5.6 拉杆与端板焊缝强度验算 ----
     doc.addHeading("拉杆与端板焊缝强度验算", 3);
 
     doc.addDisplayEquation("\\tau_{f2}=\\frac{N}{0.7\\times h_f\\times l_{w2}}= \\frac{33708.37}{0.7\\times8.0\\times120}=50.16\\ \\text{MPa}");
     doc.addDisplayEquation("\\tau_{f2}=50.16\\ \\text{MPa}\\le[f_f]=160\\ \\text{MPa}");
-    doc.addDisplayEquation("\\text{满足要求!}");
+    doc.addDisplayEquation("\\text{满足要求!}").getStyle().color("0000FF");
 
     // ---- 1.5.7 拉杆与耳板销轴抗剪验算 ----
     doc.addHeading("拉杆与耳板销轴抗剪验算", 3);
@@ -388,7 +388,7 @@ int main() {
     doc.addDisplayEquation("N_{tb}=\\frac{\\pi\\times d_e^2\\times f_{tb}}{4}= \\frac{3.14\\times14.1^2\\times170}{4\\times1000}=26.62\\ \\text{kN}");
     doc.addDisplayEquation("\\sqrt{\\left(\\frac{V}{N_{vb}}\\right)^2+\\left(\\frac{T}{N_{tb}}\\right)^2}= \\sqrt{\\left(\\frac{7.54}{21.92}\\right)^2+\\left(\\frac{3.77}{26.62}\\right)^2}=0.372");
     doc.addDisplayEquation("0.372\\le1.0");
-    doc.addDisplayEquation("\\text{满足要求!}").setStyle(RunStyle().color("0000FF"));
+    doc.addDisplayEquation("\\text{满足要求!}").getStyle().color("0000FF");
 
     // ---- 1.7 计算结果汇总 ----
     doc.addHeading("计算结果汇总", 2);
@@ -396,7 +396,7 @@ int main() {
     // 表6
     {
         auto& t = doc.addTable(18, 5);
-        t.setStyle(TableStyle::Grid).setCaption("计算结果总览表");
+        t.setBorderStyle(TableStyle::Grid).setCaption("计算结果总览表");
 
         t.cell(0, 0).addParagraph("验算项目");
         t.cell(0, 1).addParagraph("验算内容");
@@ -407,116 +407,130 @@ int main() {
         // Row 1
         t.cell(1, 0).addParagraph("悬挑主梁");
         t.cell(1, 1).addParagraph("抗弯");
-        t.cell(1, 2).addParagraph("");
-        t.cell(1, 3).addParagraph("");
-        t.cell(1, 4).addParagraph("满足要求!");
+        t.cell(1, 2).addEquation("\\sigma = 53.46\\ \\text{MPa}");
+        t.cell(1, 3).addEquation("[f]=205\\ \\text{MPa}");
+        t.cell(1, 4).addParagraph("满足要求!").getStyle().color("0000FF");
         // Row 2
         t.cell(2, 0).addParagraph("");
         t.cell(2, 1).addParagraph("压弯");
-        t.cell(2, 2).addParagraph("");
-        t.cell(2, 3).addParagraph("");
-        t.cell(2, 4).addParagraph("满足要求!");
+        t.cell(2, 2).addEquation("\\sigma_p = 55.82\\ \\text{MPa}");
+        t.cell(2, 3).addEquation("[f]=205\\ \\text{MPa}");
+        t.cell(2, 4).addParagraph("满足要求!").getStyle().color("0000FF");
         // Row 3
         t.cell(3, 0).addParagraph("");
         t.cell(3, 1).addParagraph("抗剪");
-        t.cell(3, 2).addParagraph("");
-        t.cell(3, 3).addParagraph("");
-        t.cell(3, 4).addParagraph("满足要求!");
+        t.cell(3, 2).addEquation("\\tau = 25.67\\ \\text{MPa}");
+        t.cell(3, 3).addEquation("[f]=125\\ \\text{MPa}");
+        t.cell(3, 4).addParagraph("满足要求!").getStyle().color("0000FF");
         // Row 4
         t.cell(4, 0).addParagraph("");
         t.cell(4, 1).addParagraph("整体稳定");
-        t.cell(4, 2).addParagraph("");
-        t.cell(4, 3).addParagraph("");
-        t.cell(4, 4).addParagraph("满足要求!");
+        t.cell(4, 2).addEquation("\\sigma_s = 59.25\\ \\text{MPa}");
+        t.cell(4, 3).addEquation("[f]=205\\ \\text{MPa}");
+        t.cell(4, 4).addParagraph("满足要求!").getStyle().color("0000FF");
         // Row 5
         t.cell(5, 0).addParagraph("");
         t.cell(5, 1).addParagraph("挠度");
-        t.cell(5, 2).addParagraph("");
-        t.cell(5, 3).addParagraph("");
-        t.cell(5, 4).addParagraph("满足要求!");
+        t.cell(5, 2).addEquation("\\delta = 2.5\\ \\text{mm}");
+        t.cell(5, 3).addEquation("");
+        t.cell(5, 4).addParagraph("满足要求!").getStyle().color("0000FF");
 
         // Row 6
         t.cell(6, 0).addParagraph("钢拉杆");
         t.cell(6, 1).addParagraph("强度");
-        t.cell(6, 2).addParagraph("");
-        t.cell(6, 3).addParagraph("");
-        t.cell(6, 4).addParagraph("满足要求!");
+        t.cell(6, 2).addEquation("");
+        t.cell(6, 3).addEquation("");
+        t.cell(6, 4).addParagraph("满足要求!").getStyle().color("0000FF");
 
         // Row 7
         t.cell(7, 0).addParagraph("花篮螺栓");
         t.cell(7, 1).addParagraph("强度");
-        t.cell(7, 2).addParagraph("");
-        t.cell(7, 3).addParagraph("");
-        t.cell(7, 4).addParagraph("满足要求!");
+        t.cell(7, 2).addEquation("");
+        t.cell(7, 3).addEquation("");
+        t.cell(7, 4).addParagraph("满足要求!").getStyle().color("0000FF");
 
         // Row 8
         t.cell(8, 0).addParagraph("压环钢筋");
         t.cell(8, 1).addParagraph("强度");
-        t.cell(8, 2).addParagraph("");
-        t.cell(8, 3).addParagraph("");
-        t.cell(8, 4).addParagraph("满足要求!");
+        t.cell(8, 2).addEquation("");
+        t.cell(8, 3).addEquation("");
+        t.cell(8, 4).addParagraph("满足要求!").getStyle().color("0000FF");
 
         // Row 9
         t.cell(9, 0).addParagraph("吊耳板");
         t.cell(9, 1).addParagraph("构造");
-        t.cell(9, 2).addParagraph("");
-        t.cell(9, 3).addParagraph("");
-        t.cell(9, 4).addParagraph("满足要求!");
+        t.cell(9, 2).addEquation("");
+        t.cell(9, 3).addEquation("");
+        t.cell(9, 4).addParagraph("满足要求!").getStyle().color("0000FF");
         // Row 10
         t.cell(10, 0).addParagraph("");
         t.cell(10, 1).addParagraph("构造");
-        t.cell(10, 2).addParagraph("");
-        t.cell(10, 3).addParagraph("");
-        t.cell(10, 4).addParagraph("满足要求!");
+        t.cell(10, 2).addEquation("");
+        t.cell(10, 3).addEquation("");
+        t.cell(10, 4).addParagraph("满足要求!").getStyle().color("0000FF");
         // Row 11
         t.cell(11, 0).addParagraph("");
         t.cell(11, 1).addParagraph("净截面抗拉");
-        t.cell(11, 2).addParagraph("");
-        t.cell(11, 3).addParagraph("");
-        t.cell(11, 4).addParagraph("满足要求!");
+        t.cell(11, 2).addEquation("");
+        t.cell(11, 3).addEquation("");
+        t.cell(11, 4).addParagraph("满足要求!").getStyle().color("0000FF");
+            
         // Row 12
         t.cell(12, 0).addParagraph("");
         t.cell(12, 1).addParagraph("端部抗拉");
-        t.cell(12, 2).addParagraph("");
-        t.cell(12, 3).addParagraph("");
-        t.cell(12, 4).addParagraph("满足要求!");
+        t.cell(12, 2).addEquation("");
+        t.cell(12, 3).addEquation("");
+        t.cell(12, 4).addParagraph("满足要求!").getStyle().color("0000FF");
         // Row 13
         t.cell(13, 0).addParagraph("");
         t.cell(13, 1).addParagraph("端部抗剪");
-        t.cell(13, 2).addParagraph("");
-        t.cell(13, 3).addParagraph("");
-        t.cell(13, 4).addParagraph("满足要求!");
+        t.cell(13, 2).addEquation("");
+        t.cell(13, 3).addEquation("");
+        t.cell(13, 4).addParagraph("满足要求!").getStyle().color("0000FF");
         // Row 14
         t.cell(14, 0).addParagraph("");
         t.cell(14, 1).addParagraph("耳板主梁焊缝");
-        t.cell(14, 2).addParagraph("");
-        t.cell(14, 3).addParagraph("");
-        t.cell(14, 4).addParagraph("满足要求!");
+        t.cell(14, 2).addEquation("");
+        t.cell(14, 3).addEquation("");
+        t.cell(14, 4).addParagraph("满足要求!").getStyle().color("0000FF");
         // Row 15
         t.cell(15, 0).addParagraph("");
         t.cell(15, 1).addParagraph("拉杆端板焊缝");
-        t.cell(15, 2).addParagraph("");
-        t.cell(15, 3).addParagraph("");
-        t.cell(15, 4).addParagraph("满足要求!");
+        t.cell(15, 2).addEquation("");
+        t.cell(15, 3).addEquation("");
+        t.cell(15, 4).addParagraph("满足要求!").getStyle().color("0000FF");
         // Row 16
         t.cell(16, 0).addParagraph("");
         t.cell(16, 1).addParagraph("销轴抗剪");
-        t.cell(16, 2).addParagraph("");
-        t.cell(16, 3).addParagraph("");
-        t.cell(16, 4).addParagraph("满足要求!");
+        t.cell(16, 2).addEquation("");
+        t.cell(16, 3).addEquation("");
+        t.cell(16, 4).addParagraph("满足要求!").getStyle().color("0000FF");
 
         // Row 17
         t.cell(17, 0).addParagraph("杆件建筑连接");
         t.cell(17, 1).addParagraph("螺栓");
-        t.cell(17, 2).addParagraph("0.372");
-        t.cell(17, 3).addParagraph("1.0");
-        t.cell(17, 4).addParagraph("满足要求!");
+        t.cell(17, 2).addEquation("0.372");
+        t.cell(17, 3).addEquation("1.0");
+        t.cell(17, 4).addParagraph("满足要求!").getStyle().color("0000FF");
+
+        t.mergeCells(1, 0, 5, 0);
+        t.mergeCells(9, 0, 16, 0);
     }
 
     // ---- Save ----
     std::string outputPath = "platform_output.docx";
     if (doc.save(outputPath)) {
         std::cout << "Document saved to: " << outputPath << std::endl;
+
+        // Open the generated file
+#ifdef _WIN32
+        system(("start \"\" \"" + outputPath + "\"").c_str());
+#elif __APPLE__
+        system(("open \"" + outputPath + "\"").c_str());
+#else
+        system(("xdg-open \"" + outputPath + "\"").c_str());
+#endif
+
     } else {
         std::cerr << "Failed to save document!" << std::endl;
         return 1;

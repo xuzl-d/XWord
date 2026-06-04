@@ -8,7 +8,7 @@ namespace xword {
 struct Cell::Impl {
     std::vector<std::unique_ptr<Paragraph>> m_paragraphs;
     std::vector<CellImage> m_images;
-    RunStyle    m_defaultRunStyle;  // set by Table::setDefaultRunStyle
+    RunStyle    m_defaultRunStyle;  // set by Table::setStyle
     VAlignment  m_vAlign = VAlignment::Center;
     std::string m_vMerge;
     int  m_gridSpan = 0;
@@ -36,7 +36,7 @@ Cell& Cell::operator=(Cell&&) noexcept = default;
 Paragraph& Cell::addParagraph(const std::string& text) {
     auto p = std::make_unique<Paragraph>();
     if (m_impl->m_defaultRunStyle.hasFormatting())
-        p->setDefaultRunStyle(m_impl->m_defaultRunStyle);
+        p->setStyle(m_impl->m_defaultRunStyle);
     if (!text.empty()) p->addRun(text);
     p->setFirstLineIndent(0);
     p->setSpacingAfter(0);
@@ -47,7 +47,7 @@ Paragraph& Cell::addParagraph(const std::string& text) {
 Paragraph& Cell::addParagraph(const std::string& text, const RunStyle& style) {
     auto p = std::make_unique<Paragraph>();
     if (m_impl->m_defaultRunStyle.hasFormatting())
-        p->setDefaultRunStyle(m_impl->m_defaultRunStyle);
+        p->setStyle(m_impl->m_defaultRunStyle);
     if (!text.empty()) p->addRun(text, style);
     p->setFirstLineIndent(0);
     p->setSpacingAfter(0);
@@ -92,7 +92,8 @@ CellImage& Cell::addImage(const std::wstring& filepath, int width, int height) {
 void Cell::setVMerge(const std::string& v) { m_impl->m_vMerge = v; }
 void Cell::setGridSpan(int span)           { m_impl->m_gridSpan = span; }
 void Cell::setHidden(bool h)               { m_impl->m_hidden = h; }
-void Cell::setDefaultRunStyle(const RunStyle& s) { m_impl->m_defaultRunStyle = s; }
+void Cell::setStyle(const RunStyle& s) { m_impl->m_defaultRunStyle = s; }
+RunStyle& Cell::getStyle() { return m_impl->m_defaultRunStyle; }
 void Cell::setVAlign(VAlignment v) { m_impl->m_vAlign = v; }
 VAlignment Cell::vAlign() const { return m_impl->m_vAlign; }
 const std::string& Cell::vMerge() const    { return m_impl->m_vMerge; }
@@ -122,14 +123,16 @@ Table::Table(Table&&) noexcept = default;
 Table& Table::operator=(Table&&) noexcept = default;
 
 Table& Table::setHeaderRow(int row) { m_impl->m_headerRow = row; return *this; }
-Table& Table::setStyle(TableStyle style) { m_impl->m_style = style; return *this; }
-Table& Table::setDefaultRunStyle(const RunStyle& style) {
+Table& Table::setBorderStyle(TableStyle style) { m_impl->m_style = style; return *this; }
+Table& Table::setStyle(const RunStyle& style) {
     m_impl->m_defaultRunStyle = style;
     for (int r = 0; r < m_impl->m_rows; ++r)
         for (int c = 0; c < m_impl->m_cols; ++c)
-            m_impl->m_cells[r][c].setDefaultRunStyle(style);
+            m_impl->m_cells[r][c].setStyle(style);
     return *this;
 }
+
+RunStyle& Table::getStyle() { return m_impl->m_defaultRunStyle; }
 
 Table& Table::setVAlign(VAlignment v) {
     for (int r = 0; r < m_impl->m_rows; ++r)

@@ -28,7 +28,7 @@ namespace xword {
 ///     doc.setPage(Page().setSize(PageSize::A4));
 ///     doc.addHeading("Title", 1);
 ///     doc.addParagraph("Hello world.");
-///     doc.addTable(3, 2).setStyle(TableStyle::Grid);
+///     doc.addTable(3, 2).setBorderStyle(TableStyle::Grid);
 ///     doc.save("output.docx");
 ///
 /// ## Template mode
