@@ -243,6 +243,36 @@ int main() {
         "\\begin{pmatrix} a_{11} & a_{12} & a_{13} \\\\ "
         "a_{21} & a_{22} & a_{23} \\\\ "
         "a_{31} & a_{32} & a_{33} \\end{pmatrix}");
+    
+    doc.addDisplayEquation(
+        "\\begin{matrix} a_{11} & a_{12} & a_{13} \\\\ "
+        "a_{21} & a_{22} & a_{23} \\\\ "
+        "a_{31} & a_{32} & a_{33} \\end{matrix}");
+
+    doc.addDisplayEquation(
+        "\\begin{bmatrix} a_{11} & a_{12} & a_{13} \\\\ "
+        "a_{21} & a_{22} & a_{23} \\\\ "
+        "a_{31} & a_{32} & a_{33} \\end{bmatrix}");
+
+    doc.addDisplayEquation(
+        "\\begin{vmatrix} a_{11} & a_{12} & a_{13} \\\\ "
+        "a_{21} & a_{22} & a_{23} \\\\ "
+        "a_{31} & a_{32} & a_{33} \\end{vmatrix}");
+
+    doc.addDisplayEquation(
+        "\\begin{Vmatrix} a_{11} & a_{12} & a_{13} \\\\ "
+        "a_{21} & a_{22} & a_{23} \\\\ "
+        "a_{31} & a_{32} & a_{33} \\end{Vmatrix}");
+
+    doc.addDisplayEquation(
+        "\\begin{Bmatrix} a_{11} & a_{12} & a_{13} \\\\ "
+        "a_{21} & a_{22} & a_{23} \\\\ "
+        "a_{31} & a_{32} & a_{33} \\end{Bmatrix}"); 
+
+    doc.addDisplayEquation(
+        "\\left\\{\\begin{matrix} a_{11} & a_{12} & a_{13} \\\\ "
+        "a_{21} & a_{22} & a_{23} \\\\ "
+        "a_{31} & a_{32} & a_{33} \\end{matrix}\\right."); 
 
     doc.addParagraph("希腊字母与符号：");
     doc.addEquation("\\alpha + \\beta = \\gamma, \\quad \\Delta x \\to 0, \\quad \\infty");

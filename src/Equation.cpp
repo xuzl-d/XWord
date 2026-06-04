@@ -241,7 +241,27 @@ namespace xword {
                     "<m:begChr m:val=\"[\"/><m:endChr m:val=\"]\"/>"
                     "</m:dPr><m:e>" + matrix + "</m:e></m:d>";
             }
-            return matrix;   // 无括号矩阵
+            else if (env == "Bmatrix") {
+                return "<m:d><m:dPr>"
+                    "<m:begChr m:val=\"{ \"/><m:endChr m:val=\"}\"/>"
+                    "</m:dPr><m:e>" + matrix + "</m:e></m:d>";
+            }
+            else if (env == "vmatrix") {
+                return "<m:d><m:dPr>"
+                    "<m:begChr m:val=\"|\"/><m:endChr m:val=\"|\"/>"
+                    "</m:dPr><m:e>" + matrix + "</m:e></m:d>";
+            }
+            else if (env == "Vmatrix") {
+                return "<m:d><m:dPr>"
+                    "<m:begChr m:val=\"\xE2\x80\x96\"/><m:endChr m:val=\"\xE2\x80\x96\"/>"
+                    "</m:dPr><m:e>" + matrix + "</m:e></m:d>";
+            }
+            else if (env == "cases") {
+                return "<m:d><m:dPr>"
+                    "<m:begChr m:val=\"{ \"/>"
+                    "</m:dPr><m:e>" + matrix + "</m:e></m:d>";
+            }
+            return matrix;   // 无括号矩阵（matrix）
         }
 
         // 处理上下标 _ 和 ^ ，返回添加了脚本的完整 OMML
@@ -447,7 +467,9 @@ namespace xword {
                             while (p < end && *p != '}') ++p;
                             std::string_view env(envStart, p - envStart);
                             if (p < end) ++p;  // skip '}'
-                            if (env == "matrix" || env == "pmatrix" || env == "bmatrix") {
+                            if (env == "matrix"   || env == "pmatrix" || env == "bmatrix"
+                                || env == "vmatrix" || env == "Vmatrix" || env == "Bmatrix"
+                                || env == "cases") {
                                 parts.push_back(parseMatrix(p, end, std::string(env)));
                             }
                         }
@@ -458,13 +480,49 @@ namespace xword {
                         if (p < end) ++p;
                         continue;
                     }
-                    // \left \right 简化处理：只输出原括号，不伸缩
-                    if (cmd == "left" || cmd == "right") {
+                    // \left DELIM ... \right DELIM — stretchy brackets
+                    if (cmd == "left") {
+                        // Read delimiter: may be escaped (\{ → {), plain char, or .
+                        char lDelim = '.';
                         if (p < end) {
-                            char delimChar = *p++;
-                            if (delimChar == '.') { /* 无分隔符 */ }
-                            else parts.push_back(run(std::string(1, delimChar)));
+                            if (*p == '\\' && p + 1 < end) { ++p; lDelim = *p++; }  // \{ → {
+                            else lDelim = *p++;
                         }
+                        // Collect raw content until matching \right (handle nesting)
+                        std::string raw;
+                        int lrDepth = 0;
+                        while (p < end) {
+                            if (p + 6 <= end && std::string_view(p, 6) == "\\right") {
+                                if (lrDepth == 0) { p += 6; break; }
+                                --lrDepth;
+                            }
+                            if (p + 5 <= end && std::string_view(p, 5) == "\\left") ++lrDepth;
+                            raw += *p++;
+                        }
+                        char rDelim = '.';
+                        if (p < end) {
+                            if (*p == '\\' && p + 1 < end) { ++p; rDelim = *p++; }  // \} → }
+                            else rDelim = *p++;
+                        }
+                        const char* rp = raw.c_str();
+                        std::string inner = parseLaTeX(rp, rp + raw.size());
+                        // Build stretchy bracket m:d. Note: Word defaults
+                        // missing begChr/endChr to the matching pair of the
+                        // present side. Emit empty m:val="" to suppress.
+                        std::string dPr = "<m:dPr>";
+                        dPr += "<m:begChr m:val=\"";
+                        if (lDelim != '.') dPr += (lDelim == '{' ? "{ " : std::string(1, lDelim));
+                        dPr += "\"/>";
+                        dPr += "<m:endChr m:val=\"";
+                        if (rDelim != '.') dPr += (rDelim == '}' ? "}" : std::string(1, rDelim));
+                        dPr += "\"/>";
+                        dPr += "</m:dPr>";
+                        parts.push_back("<m:d>" + dPr + "<m:e>" + inner + "</m:e></m:d>");
+                        continue;
+                    }
+                    if (cmd == "right") {
+                        // orphan \right (shouldn't happen with valid LaTeX) — skip
+                        if (p < end) ++p;
                         continue;
                     }
                     // 重音符号
