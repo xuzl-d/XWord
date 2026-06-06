@@ -4,3 +4,17 @@ build/
 # macOS Finder metadata
 .DS_Store
 /build_v141
+/build_pyd
+/dist
+/.vscode
+/.vs
+/.claude
+
+# Python cache
+__pycache__/
+
+# Debug symbols
+*.pdb
+
+# Archive packages
+*.zip
