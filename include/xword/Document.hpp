@@ -257,7 +257,10 @@ public:
 
     /// Load a .docx file as a template.
     /// @return false if the file could not be opened.
+    /// UTF-8 `std::string` paths and Windows wide paths are both accepted.
     bool open(const std::string& filepath);
+    bool open(const std::wstring& filepath);
+    bool open(const wchar_t* filepath) { return open(std::wstring(filepath)); }
 
     /// Store a template variable value (in-text replacement of `${key}`).
     Document& set(const std::string& key, const std::string& value);

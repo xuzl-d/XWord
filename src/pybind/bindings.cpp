@@ -545,7 +545,7 @@ PYBIND11_MODULE(_native, m) {
         .def("add_display_equation", &Document::addDisplayEquation, py::return_value_policy::reference_internal)
         .def("clear_header", &Document::clearHeader, py::return_value_policy::reference_internal)
         .def("clear_footer", &Document::clearFooter, py::return_value_policy::reference_internal)
-        .def("open", &Document::open, py::return_value_policy::reference_internal)
+        .def("open", py::overload_cast<const std::string&>(&Document::open), py::return_value_policy::reference_internal)
         .def("save", &Document::save, py::return_value_policy::reference_internal)
         .def("set_default_paragraph_indent", &Document::setDefaultParagraphIndent, py::return_value_policy::reference_internal, py::arg("chars")=2,py::arg("font_size_pt")=12)
         .def("set_body_font", &Document::setBodyFont, py::return_value_policy::reference_internal, py::arg("east_asia"),py::arg("ascii")="",py::arg("h_ansi")="")

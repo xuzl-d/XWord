@@ -308,6 +308,7 @@ SaveResult Document::saveDetailed(const std::string& path,const SaveOptions& opt
     result.warnings=std::move(package.warnings); return result;
 }
 
+bool Document::open(const std::wstring& path) { return open(std::filesystem::path(path).u8string()); }
 bool Document::open(const std::string& path) {
     auto parts=readZip(path); if(!parts.count("word/document.xml")||!parts.count("[Content_Types].xml"))return false;
     try { pugi::xml_document d; parseXml(d,parts.at("word/document.xml")); canonicalizeWordPrefixes(d.document_element()); if(!d.document_element().child("w:body"))return false; } catch(...) {return false;}

@@ -134,7 +134,7 @@ doc.addBibliography("参考文献");
 
 ## 模板与保存
 
-`open(path)` 成功时重置已有构建状态并切换模板模式，失败返回 false。文本、条件及内容块填充使用 `set`／`setParagraph/Table/Image/BulletList/OrderedList/Equation/DisplayEquation`。同一块 key 的多次调用按顺序追加；块 key 优先于同名标量。
+`open(path)` 成功时重置已有构建状态并切换模板模式，失败返回 false。C++ 接受 UTF-8 `std::string` 以及 `std::wstring`／`wchar_t*` 宽路径。文本、条件及内容块填充使用 `set`／`setParagraph/Table/Image/BulletList/OrderedList/Equation/DisplayEquation`。同一块 key 的多次调用按顺序追加；块 key 优先于同名标量。
 
 模板模式保留原文档的节、注释、来源及属性；不提供修改这些全局结构的接口。从零生成专用操作在模板模式会明确抛出异常，避免覆盖原部件或静默丢弃设置。新块的直接格式、图片题注和新增命名样式可使用；已存在的来源和注释可在新块中引用。
 
