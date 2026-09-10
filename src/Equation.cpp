@@ -1,4 +1,5 @@
 #include "xword/Equation.hpp"
+#include "internal/utf.hpp"
 #include <cctype>
 #include <string>
 #include <string_view>
@@ -617,6 +618,9 @@ namespace xword {
         : m_impl(std::make_unique<Impl>(Impl{ latex, mode })) {
     }
 
+    Equation::Equation(const std::wstring& latex, EquationMode mode)
+        : Equation(internal::wstring_to_utf8(latex), mode) {}
+
     Equation::~Equation() = default;
     Equation::Equation(Equation&&) noexcept = default;
     Equation& Equation::operator=(Equation&&) noexcept = default;
@@ -649,20 +653,7 @@ namespace xword {
         const auto& s = m_impl->m_style;
         bool hasStyle = s.hasFormatting();
         if (hasStyle) {
-            std::string wRPr = "<w:rPr>";
-            if (s.fontSize() > 0) {
-                int halfPt = static_cast<int>(s.fontSize() * 2);
-                wRPr += "<w:sz w:val=\"" + std::to_string(halfPt) + "\"/>"
-                        "<w:szCs w:val=\"" + std::to_string(halfPt) + "\"/>";
-            }
-            if (s.bold())      wRPr += "<w:b/>";
-            if (s.italic())    wRPr += "<w:i/>";
-            if (s.underline()) wRPr += "<w:u w:val=\"single\"/>";
-            if (!s.color().empty())
-                wRPr += "<w:color w:val=\"" + s.color() + "\"/>";
-            if (!s.font().empty())
-                wRPr += "<w:rFonts w:ascii=\"" + s.font() + "\" w:hAnsi=\"" + s.font() + "\"/>";
-            wRPr += "</w:rPr>";
+            std::string wRPr = s.toXml();
 
             std::string result;
             size_t pos = 0;

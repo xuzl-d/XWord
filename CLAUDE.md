@@ -1,55 +1,57 @@
-# CLAUDE.md
+# XWord development guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+XWord 2.0 is a C++17 / Python OOXML Transitional generator. Ordinary generation
+does not require Office. Word performs layout and evaluates layout-dependent
+fields and native bibliography formatting.
 
-## Build & test
+## Build and test
 
-```bash
-# Configure (requires VS 2019 with v141 toolset)
-cmake -S . -B build -G "Visual Studio 16 2019" -A x64 -T v141
-cmake --build build --config Release
-
-# Run tests
-ctest --test-dir build -C Release
-
-# Install to dist/
-cmake --install build --prefix dist --config Release
-
-# Python bindings (requires the built .pyd in python/xword/)
-pip install -e .
+```powershell
+cmake -S . -B build/release -G "Visual Studio 17 2022" -A x64
+cmake --build build/release --config Release
+ctest --test-dir build/release -C Release --output-on-failure
+cmake --install build/release --prefix dist --config Release
 ```
+
+Use `-T v141` in a fresh build directory to check the supported legacy toolset.
+Debug and Release consumers must use the matching DLL and CRT. 2.0 changes ABI;
+rebuild consumers rather than replacing a 1.x DLL in place.
+
+For Python set `XWORD_BUILD_PYTHON=ON`, `pybind11_DIR` (2.13.6), and
+`Python_EXECUTABLE`. Use a fresh build directory when changing interpreters.
+The root project builds both the DLL and extension. Install COMPONENT python
+to obtain a self-contained package. `pyproject.toml` supplies the regular
+source-wheel backend; `tools/package_built_wheel.py` packages an already built
+CMake install without additional Python build dependencies.
+
+CTest covers basic generation/templates, equations, v2 features, regressions,
+and Python ownership/package parity when enabled. Checks must evaluate in
+Release and must not show CRT assertion dialogs. Run the independent
+`tools/OpenXmlValidator` .NET tool on generated fixtures before release.
 
 ## Architecture
 
-XWord is a **C++17 .docx (OOXML) generator** — a shared library (DLL) that builds valid OPC/ZIP packages containing `word/document.xml`, styles, numbering, footnotes, headers/footers, media, and relationships. It ships with **pybind11 Python bindings** so the same engine is usable from Python.
+- `Document` owns ordered section bodies and document-level styles, annotations,
+  sources and metadata. Programmatic generation and template filling are separate
+  modes; unsupported mode combinations must fail explicitly.
+- `Content` is the shared ordered block model for bodies, cells, headers/footers
+  and notes. Objects have stable addresses while more content is appended.
+- `Section` owns page geometry, columns, numbering and three header/footer slots.
+  Absent slots inherit, created empty slots explicitly suppress inherited content.
+- `Paragraph`, `Image`, `Table` and `BulletList` serialize structured fragments.
+  Internal `xw` placeholders are resolved only by the complete package writer.
+- `internal/Package` allocates part-local relationships and unique resources,
+  resolves fields and references, validates structure, and commits a temporary ZIP.
+- pugixml 1.14 is vendored under `thirdparty/pugixml`; miniz handles ZIP files.
+  Template replacement operates on XML nodes and preserves unmodified parts.
+- Formatting uses explicit `Length` units and tri-state inheritance. Public value
+  types are not ABI-stable across major versions. Business APIs use camelCase in
+  C++ and snake_case in Python, with `reference_internal` for owned references.
 
-### Public API (headers in `include/xword/`)
+## Documentation
 
-Every public class uses **Pimpl** (`std::unique_ptr<Impl>`) — class layout is a single pointer, so member changes don't break ABI.
-
-- **`Document`** — top-level builder: page setup, headings, paragraphs, tables, images, lists, equations, headers/footers, TOC, footnotes, section breaks, template engine. Entry point for all document creation.
-- **`Paragraph`** — text container with runs (`addRun`), fields (PAGE/NUMPAGES), inline equations, footnote refs. Fluent API throughout.
-- **`Table`** / **`Cell`** / **`CellImage`** — grid-border tables, header rows, cell merging, cell-level images/equations.
-- **`Image`** — PNG/EMF/WMF/SVG embedding with auto size detection and caption numbering.
-- **`Equation`** — LaTeX → OMML translator (Greek letters, fractions, roots, sums, integrals, matrices, accents, trig functions).
-- **`BulletList`** — bullet and ordered lists with multi-level indent.
-- **`Types.hpp`** — enums (`Alignment`, `TableStyle`, `PageSize`, `Orientation`, `HeadingNumFormat`, `CaptionNumStyle`, `SectionBreakType`) and value types (`Page`, `PageMargins`, `HeadingStyle`).
-- **`RunStyle`** (`Run.hpp`) — value type for text formatting (bold, italic, underline, font, size, color).
-- **`Format.hpp`** — `xword::format()` printf-style string helper.
-- **`xword.hpp`** — umbrella header.
-
-### Source layout (`src/`)
-
-Each public class has its own `.cpp` with the `Impl` struct defined there. `src/internal/ZipWriter.cpp`/`ZipReader.cpp` handle the OPC package (ZIP container) via miniz (static lib in `thirdparty/miniz/`). `src/pybind/bindings.cpp` maps the full C++ API to Python with pybind11.
-
-### Template engine
-
-`Document::open("template.docx")` loads an existing .docx as a template. Scalar `set(key, value)` fills `${key}` in-text. Block overloads (`set(key, Table)`, `setParagraph` / `setTable` / `setImage` / `setBulletList` / `setOrderedList` / `setEquation`) replace the placeholder's entire paragraph — keep `${key}` on its own line. `{%if key%}` / `{%else%}` / `{%endif%}` control conditionals (no nested ifs). Truth is `"false"`/`"0"`/`""` → false; block content for a key is always true. Headers/footers get scalar replacement only. The template XML is parsed and rewritten, then re-zipped on save.
-
-### Python package (`python/xword/`)
-
-Thin wrapper: `__init__.py` re-exports everything from the compiled `_native` module. The native `.pyd` is declared as package data in `pyproject.toml`. The pybind build is handled separately by `python/pybind_build/CMakeLists.txt`.
-
-### DLL ABI contract
-
-Built with MSVC v141 (VS2017 toolset). Consumers must use the same MSVC major version and CRT link mode (`/MD` Release, `/MDd` Debug). Debug DLL is named `xwordd.dll`.
+Use `docs/api.md`, `docs/api-reference.md`, `docs/migration-2.0.md`,
+`docs/capabilities.md` and `docs/validation.md` as the current API/scope reference.
+Regenerate the method inventory with `tools/generate_api_reference.py` using the
+matching compiled Python module. Do not claim schema validation proves visual
+layout, page counts or compatibility with Word versions that were not tested.

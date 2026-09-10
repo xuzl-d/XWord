@@ -31,6 +31,7 @@ std::unordered_map<std::string, std::string> readZip(const std::string& filepath
 
 // Escape XML special chars in text content
 std::string xmlEscape(const std::string& text);
+void validateXmlCharacters(const std::string& text);
 
 // Compute image dimensions in EMU from pixel size
 // maxWidthEmu: if > 0, auto-scale image to fit within this width (for page-fit behavior)

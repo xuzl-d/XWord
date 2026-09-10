@@ -48,6 +48,15 @@ public:
     /// Caption text displayed below the image.
     Image& setCaption(const std::string& caption);
     Image& setCaption(const std::wstring& caption);
+    Image& setBookmark(const TargetId& target);
+    Image& setWrap(ImageWrap wrap);
+    Image& setPosition(Length x, Length y, PositionRelative horizontal = PositionRelative::Margin, PositionRelative vertical = PositionRelative::Paragraph);
+    Image& setCrop(double left, double top, double right, double bottom);
+    Image& setKeepAspectRatio(bool on = true);
+    Image& setAltText(const std::string& description, const std::string& title = "");
+    Image& setSvgFallback(const std::string& path);
+    Image& setDimensions(Length width, Length height);
+    std::string toXml(bool inlineImage = false) const;
     /// @}
 
     /// @{

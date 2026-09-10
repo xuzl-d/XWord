@@ -1,2113 +1,384 @@
-﻿#include "xword/Document.hpp"
-#include "internal/ZipWriter.hpp"
+#include "xword/Document.hpp"
+#include "internal/Package.hpp"
+#include "internal/utf.hpp"
 #include <algorithm>
-#include <fstream>
-#include <sstream>
+#include <ctime>
 #include <iomanip>
-#include <iostream>
-#include <filesystem>
+#include <map>
+#include <regex>
+#include <functional>
 
 namespace xword {
-
 using namespace internal;
-
-enum class ElementType { Heading, Paragraph, Image, Table, BulletList, Equation, TOC, SectionBreak };
-
-struct Element {
-    ElementType type; int headingLevel=0; std::string text,extra; bool noNumbering=false;
-    union Data { Paragraph* paragraph=nullptr; class Image* image; class Table* table;
-        class BulletList* bulletList; class Equation* equation; void* ptr; Data(){} } data;
-};
-
-struct FootnoteInfo {
-    int id;
-    std::string text;
-};
-
-struct SectionInfo {
-    Page             page;
-    std::unique_ptr<Paragraph> header;
-    std::unique_ptr<Paragraph> footer;
-    SectionBreakType breakType = SectionBreakType::NextPage;
-    bool             titlePg = false;
-};
-
-struct TemplateBlock {
-    ElementType type = ElementType::Paragraph;
-    Paragraph*  paragraph = nullptr;
-    Image*      image = nullptr;
-    Table*      table = nullptr;
-    BulletList* bulletList = nullptr;
-    Equation*   equation = nullptr;
-};
-
-struct PendingMedia {
-    std::string rId;
-    std::string relTarget;   // e.g. media/xword_1.png
-    std::string srcPath;
-    std::string contentType;
-};
-
 struct Document::Impl {
-    std::vector<std::unique_ptr<Paragraph>>   m_paragraphs;
-    std::vector<std::unique_ptr<Image>>       m_images;
-    std::vector<std::unique_ptr<Table>>       m_tables;
-    std::vector<std::unique_ptr<BulletList>>  m_lists;
-    std::vector<std::unique_ptr<Equation>>    m_equations;
-    std::vector<Element>                      m_elements;
-    HeadingStyle    m_headingStyles[6];
-    bool            m_headingNumbering = false;
-    HeadingNumFormat m_headingNumFormat = HeadingNumFormat::Decimal;
-    int             m_nextOrderedListId = 3;
-    int             m_defaultIndent = 480;
-    std::string     m_bodyFontEastAsia;
-    std::string     m_bodyFontAscii;
-    std::string     m_bodyFontHAnsi;
-    double          m_bodyFontSize = 0;        // 0 = use default (11pt)
-    double          m_bodyLineSpacing = 0;     // 0 = use default (1.15x)
-    RunStyle        m_bodyRunStyle;            // default run style for body paragraphs
-    RunStyle        m_displayEquationStyle;    // default style for display equations
-    RunStyle        m_tableRunStyle;           // default run style for table cells
-    bool            m_imageNumbering = false;
-    std::string     m_imageNumPrefix = "图";
-    CaptionNumStyle m_imageNumStyle = CaptionNumStyle::Sequential;
-    bool            m_tableNumbering = false;
-    std::string     m_tableNumPrefix = "表";
-    CaptionNumStyle m_tableNumStyle = CaptionNumStyle::Sequential;
-    std::vector<FootnoteInfo>   m_footnotes;
-    int                         m_nextFootnoteId = 1;
-    std::vector<SectionInfo>    m_sections;
-    int                         m_curSection = 0; // index into m_sections
-    bool            m_isTemplate = false;
-    std::unordered_map<std::string, std::string> m_templateParts, m_templateVars;
-    std::unordered_map<std::string, std::vector<TemplateBlock>> m_templateBlocks;
-    std::vector<PendingMedia> m_pendingMedia;
-    int             m_nextTplMedia = 1;
-    int             m_nextTplListId = 101;
-    bool            m_tplNeedNumbering = false;
+    struct SectionEntry { std::unique_ptr<Section> settings; std::unique_ptr<Content> body; };
+    std::vector<SectionEntry> sections;
+    std::map<int,std::unique_ptr<Note>> footnotes,endnotes;
+    struct Comment { std::string text,author,date; };
+    std::vector<Comment> comments;
+    std::map<std::string,BibliographySource> sources;
+    std::map<std::string,ParagraphStyle> paragraphStyles;
+    std::map<std::string,std::pair<RunStyle,std::string>> characterStyles;
+    std::map<std::string,TableStyleDefinition> tableStyles;
+    DocumentProperties properties;
+    std::map<std::string,CustomProperty> custom;
+    HeadingStyle headingStyles[9];
+    RunStyle bodyStyle,tableStyle,equationStyle;
+    std::string eastAsia,ascii,hAnsi,bibliographyStyle="IEEE";
+    double bodySize=11,bodySpacing=1.15;
+    int indent=480;
+    bool headingNumbering=false,evenOdd=false,imageNumbering=false,tableNumbering=false,isTemplate=false;
+    HeadingNumFormat headingFormat=HeadingNumFormat::Decimal;
+    CaptionNumStyle imageNumStyle=CaptionNumStyle::Sequential,tableNumStyle=CaptionNumStyle::Sequential;
+    std::string imagePrefix=u8"图",tablePrefix=u8"表";
+    std::map<std::string,std::string> templateParts,vars;
+    std::map<std::string,std::unique_ptr<Content>> blocks;
+    void requireGeneration() const { if(isTemplate)throw std::invalid_argument("This document-level operation requires generation mode; template mode supports set* content replacement"); }
+    Content& body() { if(isTemplate)throw std::invalid_argument("Use set* content factories in template mode"); return *sections.back().body; }
+    Content& block(const std::string& key) { auto& p=blocks[key]; if(!p)p=std::make_unique<Content>(); return *p; }
 };
-
-// ---- Document ----
-
-Document::Document() : m_impl(std::make_unique<Impl>()) {
-    m_impl->m_sections.emplace_back(); // default section 0
+Document::Document():m_impl(std::make_unique<Impl>()) { addSection(); }
+Document::~Document()=default;
+Section& Document::currentSection() { m_impl->requireGeneration(); return *m_impl->sections.back().settings; }
+Section& Document::addSection(SectionBreakType t) {
+    if(!m_impl->sections.empty())m_impl->requireGeneration();
+    auto s=std::make_unique<Section>(t); if(!m_impl->sections.empty())s->inheritLayout(currentSection());
+    auto p=s.get(); m_impl->sections.push_back({std::move(s),std::make_unique<Content>()}); return *p;
 }
-Document::~Document() = default;
-
-Document& Document::setPage(const Page& page) {
-    m_impl->m_sections[m_impl->m_curSection].page = page;
-    return *this;
+Document& Document::setPage(const Page& p) { currentSection().setPage(p); return *this; }
+Document& Document::addSectionBreak(SectionBreakType t) { addSection(t); return *this; }
+Document& Document::addPageBreak() { addParagraph().setFirstLineIndent(0).addBreak(BreakType::Page); return *this; }
+Document& Document::enableTitlePage() { currentSection().setTitlePage(); return *this; }
+Document& Document::setEvenAndOddHeaders(bool on) { m_impl->requireGeneration(); m_impl->evenOdd=on; return *this; }
+Document& Document::setDefaultParagraphIndent(double chars,int size) { m_impl->requireGeneration(); if(!std::isfinite(chars)||chars<0||size<=0)throw std::invalid_argument("Invalid paragraph indent"); m_impl->indent=static_cast<int>(chars*size*20); return *this; }
+Document& Document::setBodyFont(const std::string& ea,const std::string& ascii,const std::string& hAnsi) { m_impl->requireGeneration(); m_impl->eastAsia=ea; m_impl->ascii=ascii.empty()?ea:ascii; m_impl->hAnsi=hAnsi.empty()?m_impl->ascii:hAnsi; return *this; }
+Document& Document::setBodyFontSize(double n) { m_impl->requireGeneration(); if(!std::isfinite(n)||n<=0||n>1638)throw std::invalid_argument("Invalid font size"); m_impl->bodySize=n; return *this; }
+Document& Document::setBodyLineSpacing(double n) { m_impl->requireGeneration(); if(!std::isfinite(n)||n<=0)throw std::invalid_argument("Invalid line spacing"); m_impl->bodySpacing=n; return *this; }
+Document& Document::setBodyRunStyle(const RunStyle& s) { m_impl->requireGeneration(); m_impl->bodyStyle=s; return *this; }
+Document& Document::setTableRunStyle(const RunStyle& s) { m_impl->requireGeneration(); m_impl->tableStyle=s; return *this; }
+Document& Document::setDisplayEquationStyle(const RunStyle& s) { m_impl->requireGeneration(); m_impl->equationStyle=s; return *this; }
+Paragraph& Document::addParagraph(const std::string& s) { return m_impl->body().addParagraph(s).setStyle(m_impl->bodyStyle).setFirstLineIndent(m_impl->indent); }
+Paragraph& Document::addParagraph(const std::wstring& s) { return addParagraph(wstring_to_utf8(s)); }
+Paragraph& Document::addHeadingParagraph(const std::string& s,int level,bool numbered) {
+    if(level<1||level>9)throw std::invalid_argument("Heading level must be 1..9");
+    auto& p=m_impl->body().addParagraph(s).setStyleId("Heading"+std::to_string(level)).setFirstLineIndent(0);
+    if(numbered&&m_impl->headingNumbering)p.setNumbering(1,level-1); return p;
 }
-
-Document& Document::setDefaultParagraphIndent(double chars, int fontSizePt) {
-    if (chars <= 0) {
-        m_impl->m_defaultIndent = 0;
-    } else {
-        m_impl->m_defaultIndent = static_cast<int>(chars * fontSizePt * 20);
+Document& Document::addHeading(const std::string& s,int l) { addHeadingParagraph(s,l); return *this; }
+Document& Document::addHeading(const std::wstring& s,int l) { return addHeading(wstring_to_utf8(s),l); }
+Document& Document::addHeadingNoNum(const std::string& s,int l) { addHeadingParagraph(s,l,false); return *this; }
+Document& Document::addHeadingNoNum(const std::wstring& s,int l) { return addHeadingNoNum(wstring_to_utf8(s),l); }
+Document& Document::setHeadingStyle(int l,const HeadingStyle& s) { m_impl->requireGeneration(); if(l<1||l>9)throw std::invalid_argument("Heading level must be 1..9"); m_impl->headingStyles[l-1]=s; return *this; }
+Document& Document::enableHeadingNumbering() { m_impl->requireGeneration(); m_impl->headingNumbering=true; return *this; }
+Document& Document::disableHeadingNumbering() { m_impl->requireGeneration(); m_impl->headingNumbering=false; return *this; }
+Document& Document::setHeadingNumFormat(HeadingNumFormat f) { m_impl->requireGeneration(); m_impl->headingFormat=f; return *this; }
+Document& Document::addTOC(const std::string& levels,const std::string& title) {
+    if(!std::regex_match(levels,std::regex("[1-9]-[1-9]"))||levels[0]>levels[2])throw std::invalid_argument("TOC levels must be an ascending range in 1..9");
+    if(!title.empty())addHeadingNoNum(title,1); addParagraph().setFirstLineIndent(0).addField("TOC \\o \""+levels+"\" \\h \\z \\u"); return *this;
+}
+Document& Document::addTOC(const std::wstring& l,const std::wstring& t) { return addTOC(wstring_to_utf8(l),wstring_to_utf8(t)); }
+Document& Document::addFigureTOC(const std::string& t) { if(!t.empty())addHeadingNoNum(t,1); addParagraph().addField("TOC \\h \\z \\c \"Figure\""); return *this; }
+Document& Document::addTableTOC(const std::string& t) { if(!t.empty())addHeadingNoNum(t,1); addParagraph().addField("TOC \\h \\z \\c \"Table\""); return *this; }
+Image& Document::addImage(const std::string& s) { return m_impl->body().addImage(s); }
+Image& Document::addImage(const std::filesystem::path& s) { return addImage(s.u8string()); }
+Image& Document::addImage(const std::wstring& s) { return addImage(std::filesystem::path(s)); }
+Table& Document::addTable(int r,int c) { return m_impl->body().addTable(r,c).setStyle(m_impl->tableStyle); }
+BulletList& Document::addBulletList() { return m_impl->body().addBulletList(); }
+BulletList& Document::addOrderedList() { return m_impl->body().addOrderedList(); }
+Equation& Document::addEquation(const std::string& s) { return m_impl->body().addMath(s,EquationMode::Inline); }
+Equation& Document::addDisplayEquation(const std::string& s) { return m_impl->body().addMath(s,EquationMode::Display).setStyle(m_impl->equationStyle); }
+Document& Document::enableImageNumbering(const std::string& p,CaptionNumStyle s) { m_impl->imageNumbering=true; m_impl->imagePrefix=p; m_impl->imageNumStyle=s; return *this; }
+Document& Document::disableImageNumbering() { m_impl->imageNumbering=false; return *this; }
+Document& Document::enableTableNumbering(const std::string& p,CaptionNumStyle s) { m_impl->tableNumbering=true; m_impl->tablePrefix=p; m_impl->tableNumStyle=s; return *this; }
+Document& Document::disableTableNumbering() { m_impl->tableNumbering=false; return *this; }
+Paragraph& Document::setHeader() { currentSection().clearHeader(); return currentSection().header().addParagraph(); }
+Paragraph& Document::setFooter() { currentSection().clearFooter(); return currentSection().footer().addParagraph(); }
+Document& Document::setHeader(const std::string& s) { setHeader().addRun(s).setAlignment(Alignment::Center); return *this; }
+Document& Document::setFooter(const std::string& s) { setFooter().addRun(s).setAlignment(Alignment::Center); return *this; }
+void Document::clearHeader() { currentSection().clearHeader(); } void Document::clearFooter() { currentSection().clearFooter(); }
+Note& Document::addFootnote() { m_impl->requireGeneration(); int id=static_cast<int>(m_impl->footnotes.size())+1; auto p=std::make_unique<Note>(id); auto result=p.get(); m_impl->footnotes[id]=std::move(p); return *result; }
+Note& Document::addEndnote() { m_impl->requireGeneration(); int id=static_cast<int>(m_impl->endnotes.size())+1; auto p=std::make_unique<Note>(id); auto result=p.get(); m_impl->endnotes[id]=std::move(p); return *result; }
+int Document::addFootnote(const std::string& text) { m_impl->requireGeneration(); auto& n=addFootnote(); n.addParagraph(text); return n.id(); }
+int Document::addEndnote(const std::string& text) { m_impl->requireGeneration(); auto& n=addEndnote(); n.addParagraph(text); return n.id(); }
+Note& Document::footnote(int id) { return *m_impl->footnotes.at(id); } Note& Document::endnote(int id) { return *m_impl->endnotes.at(id); }
+int Document::addComment(const std::string& text,const std::string& author,const std::string& date) { m_impl->requireGeneration();
+    std::string timestamp=date;
+    if(timestamp.empty()) { std::time_t now=std::time(nullptr); std::tm utc{};
+#ifdef _WIN32
+        gmtime_s(&utc,&now);
+#else
+        gmtime_r(&now,&utc);
+#endif
+        std::ostringstream s; s<<std::put_time(&utc,"%Y-%m-%dT%H:%M:%SZ"); timestamp=s.str();
     }
-    return *this;
+    if(!std::regex_match(timestamp,std::regex("[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")))throw std::invalid_argument("Comment date must be UTC ISO 8601");
+    int id=static_cast<int>(m_impl->comments.size()); m_impl->comments.push_back({text,author,timestamp}); return id;
 }
-
-Document& Document::setBodyFont(const std::string& eastAsia,
-                                const std::string& ascii,
-                                const std::string& hAnsi) {
-    m_impl->m_bodyFontEastAsia = eastAsia;
-    m_impl->m_bodyFontAscii = ascii;
-    m_impl->m_bodyFontHAnsi = hAnsi.empty() ? eastAsia : hAnsi;
-    return *this;
+Document& Document::addSource(const BibliographySource& source) { m_impl->requireGeneration();
+    if(source.tag.empty()||source.title.empty()||source.tag.find_first_of("\"\\\r\n")!=std::string::npos)throw std::invalid_argument("Source requires a tag and title");
+    if(m_impl->sources.count(source.tag))throw std::invalid_argument("Duplicate source tag: "+source.tag);
+    m_impl->sources[source.tag]=source; return *this;
 }
-
-Document& Document::setBodyFontSize(double pt) {
-    m_impl->m_bodyFontSize = pt;
-    return *this;
-}
-
-Document& Document::setBodyLineSpacing(double line) {
-    m_impl->m_bodyLineSpacing = line;
-    return *this;
-}
-
-Document& Document::setBodyRunStyle(const RunStyle& style) {
-    m_impl->m_bodyRunStyle = style;
-    return *this;
-}
-
-Document& Document::setDisplayEquationStyle(const RunStyle& style) {
-    m_impl->m_displayEquationStyle = style;
-    return *this;
-}
-
-Document& Document::setTableRunStyle(const RunStyle& style) {
-    m_impl->m_tableRunStyle = style;
-    return *this;
-}
-
-Document& Document::addHeading(const std::string& text, int level) {
-    Element e;
-    e.type = ElementType::Heading;
-    e.text = text;
-    e.headingLevel = level;
-    m_impl->m_elements.push_back(e);
-    return *this;
-}
-
-Document& Document::addHeadingNoNum(const std::string& text, int level) {
-    Element e;
-    e.type = ElementType::Heading;
-    e.text = text;
-    e.headingLevel = level;
-    e.noNumbering = true;
-    m_impl->m_elements.push_back(e);
-    return *this;
-}
-
-Document& Document::setHeadingStyle(int level, const HeadingStyle& style) {
-    if (level >= 1 && level <= 6) {
-        m_impl->m_headingStyles[level - 1] = style;
-    }
-    return *this;
-}
-
-Document& Document::enableHeadingNumbering() {
-    m_impl->m_headingNumbering = true;
-    return *this;
-}
-
-Document& Document::disableHeadingNumbering() {
-    m_impl->m_headingNumbering = false;
-    return *this;
-}
-
-Document& Document::enableImageNumbering(const std::string& prefix, CaptionNumStyle style) {
-    m_impl->m_imageNumbering = true;
-    m_impl->m_imageNumPrefix = prefix;
-    m_impl->m_imageNumStyle = style;
-    return *this;
-}
-
-Document& Document::disableImageNumbering() {
-    m_impl->m_imageNumbering = false;
-    return *this;
-}
-
-Document& Document::enableTableNumbering(const std::string& prefix, CaptionNumStyle style) {
-    m_impl->m_tableNumbering = true;
-    m_impl->m_tableNumPrefix = prefix;
-    m_impl->m_tableNumStyle = style;
-    return *this;
-}
-
-Document& Document::disableTableNumbering() {
-    m_impl->m_tableNumbering = false;
-    return *this;
-}
-
-Document& Document::setHeadingNumFormat(HeadingNumFormat fmt) {
-    m_impl->m_headingNumFormat = fmt;
-    return *this;
-}
-
-Document& Document::setHeader(const std::string& text) {
-    auto& sec = m_impl->m_sections[m_impl->m_curSection];
-    sec.header = std::make_unique<Paragraph>();
-    if (!text.empty()) sec.header->addRun(text);
-    sec.header->setAlignment(Alignment::Center);
-    sec.header->setFirstLineIndent(0);
-    return *this;
-}
-
-Document& Document::setFooter(const std::string& text) {
-    auto& sec = m_impl->m_sections[m_impl->m_curSection];
-    sec.footer = std::make_unique<Paragraph>();
-    if (!text.empty()) sec.footer->addRun(text);
-    sec.footer->setAlignment(Alignment::Center);
-    sec.footer->setFirstLineIndent(0);
-    return *this;
-}
-
-Paragraph& Document::setHeader() {
-    auto& sec = m_impl->m_sections[m_impl->m_curSection];
-    sec.header = std::make_unique<Paragraph>();
-    sec.header->setFirstLineIndent(0);
-    return *sec.header;
-}
-
-Paragraph& Document::setFooter() {
-    auto& sec = m_impl->m_sections[m_impl->m_curSection];
-    sec.footer = std::make_unique<Paragraph>();
-    sec.footer->setFirstLineIndent(0);
-    return *sec.footer;
-}
-
-void Document::clearHeader() {
-    m_impl->m_sections[m_impl->m_curSection].header.reset();
-}
-
-void Document::clearFooter() {
-    m_impl->m_sections[m_impl->m_curSection].footer.reset();
-}
-
-Document& Document::addTOC(const std::string& levels, const std::string& title) {
-    if (!title.empty()) {
-        Element ht;
-        ht.type = ElementType::Heading;
-        ht.text = title;
-        ht.headingLevel = 1;
-        ht.noNumbering = true;  // TOC title should not be numbered
-        m_impl->m_elements.push_back(ht);
-    }
-    Element e;
-    e.type = ElementType::TOC;
-    e.extra = levels; // level range like "1-3"
-    m_impl->m_elements.push_back(e);
-    return *this;
-}
-
-Paragraph& Document::addParagraph(const std::string& text) {
-    auto p = std::make_unique<Paragraph>();
-    // Copy document-level default run style to the paragraph.
-    // All text runs and inline equations in this paragraph inherit it.
-    if (m_impl->m_bodyRunStyle.hasFormatting()) {
-        p->setStyle(m_impl->m_bodyRunStyle);
-    }
-    if (!text.empty()) {
-        p->addRun(text);
-    }
-    // Apply default indent
-    if (m_impl->m_defaultIndent > 0) {
-        p->setFirstLineIndent(m_impl->m_defaultIndent);
-    }
-    Paragraph* ptr = p.get();
-    m_impl->m_paragraphs.push_back(std::move(p));
-
-    Element e;
-    e.type = ElementType::Paragraph;
-    e.data.paragraph = ptr;
-    m_impl->m_elements.push_back(e);
-    return *ptr;
-}
-
-namespace {
-// OPC part names must be valid URI segments (RFC 3986), so the in-zip filename
-// must be pure ASCII with no reserved/space characters. Non-ASCII source
-// filenames need to be remapped before being used as a part name.
-bool isAsciiSafePartName(const std::string& s) {
-    for (unsigned char c : s) {
-        if (c < 0x21 || c >= 0x7F) return false;
-        switch (c) {
-            case '"': case '#': case '%': case '<': case '>':
-            case '?': case '\\': case '`': case '{': case '}':
-            case '|': case '^': case '[': case ']':
-                return false;
-        }
-    }
-    return !s.empty();
-}
-} // namespace
-
-Image& Document::addImage(const std::string& filepath) {
-    auto img = std::make_unique<Image>(filepath);
-    namespace fs = std::filesystem;
-    std::string filename = fs::u8path(filepath).filename().u8string();
-    if (!isAsciiSafePartName(filename)) {
-        std::string ext = fs::u8path(filepath).extension().u8string();
-        if (!isAsciiSafePartName(ext)) ext.clear();
-        img->setMediaName("image" + std::to_string(m_impl->m_images.size() + 1) + ext);
-    }
-    Image* ptr = img.get();
-    m_impl->m_images.push_back(std::move(img));
-
-    Element e;
-    e.type = ElementType::Image;
-    e.data.image = ptr;
-    m_impl->m_elements.push_back(e);
-    return *ptr;
-}
-
-Image& Document::addImage(const std::filesystem::path& filepath) {
-    return addImage(filepath.u8string());
-}
-
-Image& Document::addImage(const std::wstring& filepath) {
-    return addImage(std::filesystem::path(filepath));
-}
-
-Table& Document::addTable(int rows, int cols) {
-    auto tbl = std::make_unique<Table>(rows, cols);
-    Table* ptr = tbl.get();
-    if (m_impl->m_tableRunStyle.hasFormatting()) {
-        ptr->setStyle(m_impl->m_tableRunStyle);
-    }
-    m_impl->m_tables.push_back(std::move(tbl));
-
-    Element e;
-    e.type = ElementType::Table;
-    e.data.table = ptr;
-    m_impl->m_elements.push_back(e);
-    return *ptr;
-}
-
-BulletList& Document::addBulletList() {
-    auto lst = std::make_unique<BulletList>(ListType::Bullet);
-    lst->setNumId(1); // all bullet lists share numId=1
-    BulletList* ptr = lst.get();
-    m_impl->m_lists.push_back(std::move(lst));
-
-    Element e;
-    e.type = ElementType::BulletList;
-    e.data.bulletList = ptr;
-    m_impl->m_elements.push_back(e);
-    return *ptr;
-}
-
-BulletList& Document::addOrderedList() {
-    auto lst = std::make_unique<BulletList>(ListType::Ordered);
-    int id = m_impl->m_nextOrderedListId++;
-    lst->setNumId(id);
-    BulletList* ptr = lst.get();
-    m_impl->m_lists.push_back(std::move(lst));
-
-    Element e;
-    e.type = ElementType::BulletList;
-    e.data.bulletList = ptr;
-    m_impl->m_elements.push_back(e);
-    return *ptr;
-}
-
-Equation& Document::addEquation(const std::string& latex) {
-    auto eq = std::make_unique<Equation>(latex, EquationMode::Inline);
-    eq->setStyle(m_impl->m_bodyRunStyle);
-    Equation* ptr = eq.get();
-    m_impl->m_equations.push_back(std::move(eq));
-
-    Element e;
-    e.type = ElementType::Equation;
-    e.data.equation = ptr;
-    m_impl->m_elements.push_back(e);
-    return *ptr;
-}
-
-Equation& Document::addDisplayEquation(const std::string& latex) {
-    auto eq = std::make_unique<Equation>(latex, EquationMode::Display);
-    // Fall back to body run style if display equation style is unset.
-    if (m_impl->m_displayEquationStyle.hasFormatting())
-        eq->setStyle(m_impl->m_displayEquationStyle);
-    else if (m_impl->m_bodyRunStyle.hasFormatting())
-        eq->setStyle(m_impl->m_bodyRunStyle);
-    Equation* ptr = eq.get();
-    m_impl->m_equations.push_back(std::move(eq));
-
-    Element e;
-    e.type = ElementType::Equation;
-    e.data.equation = ptr;
-    m_impl->m_elements.push_back(e);
-    return *ptr;
-}
-
-Document& Document::addSectionBreak(SectionBreakType type) {
-    // Add section-break marker element
-    Element e;
-    e.type = ElementType::SectionBreak;
-    m_impl->m_elements.push_back(e);
-
-    // Create new section inheriting current section's page settings
-    int cur = m_impl->m_curSection;
-    SectionInfo newSec;
-    newSec.page     = m_impl->m_sections[cur].page;
-    newSec.breakType = type;
-    m_impl->m_sections.push_back(std::move(newSec));
-    m_impl->m_curSection = static_cast<int>(m_impl->m_sections.size()) - 1;
-    return *this;
-}
-
-Document& Document::enableTitlePage() {
-    m_impl->m_sections[m_impl->m_curSection].titlePg = true;
-    return *this;
-}
-
-int Document::addFootnote(const std::string& text) {
-    int id = m_impl->m_nextFootnoteId++;
-    m_impl->m_footnotes.push_back({id, text});
-    return id;
-}
-
-void Document::buildDocumentXml(std::string& xml) {
-    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
-
-    xml += "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""
-           " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\""
-           " xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\""
-           " xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\""
-           " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\""
-           " xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">";
-
-    xml += "<w:body>";
-
-    auto mm = [](double cm) { return static_cast<int>(cm * 567.0); };
-
-    // Content
-    int chapter = 0;       // current H1 chapter (for ByChapter mode)
-    int imgInChapter = 0;  // image counter within current chapter
-    int tblInChapter = 0;  // table counter within current chapter
-    int imgSeqNum = 0;     // global image counter (Sequential mode)
-    int tblSeqNum = 0;     // global table counter (Sequential mode)
-
-    auto formatCaptionNum = [&](CaptionNumStyle style, int chap, int chapIdx, int seqIdx) -> std::string {
-        if (style == CaptionNumStyle::ByChapter) {
-            int c = chap > 0 ? chap : 1;
-            return std::to_string(c) + "-" + std::to_string(chapIdx);
-        }
-        return std::to_string(seqIdx);
-    };
-
-    auto buildCaption = [&](const std::string& prefix, const std::string& numText,
-                            const std::string& userCaption) -> std::string {
-        std::string s;
-        s += "<w:p>"
-             "<w:pPr><w:spacing w:after=\"0\" w:before=\"0\"/>"
-             "<w:jc w:val=\"center\"/><w:ind w:firstLine=\"0\"/></w:pPr>"
-             "<w:r><w:rPr><w:b/></w:rPr>"
-             "<w:t xml:space=\"preserve\">" + xmlEscape(prefix + numText) + "</w:t>"
-             "</w:r>";
-        if (!userCaption.empty()) {
-            s += "<w:r><w:rPr><w:b/></w:rPr>"
-                 "<w:t xml:space=\"preserve\"> " + xmlEscape(userCaption) + "</w:t>"
-                 "</w:r>";
-        }
-        s += "</w:p>";
-        return s;
-    };
-
-    // Build sectPr XML for a given section.
-    // firstSection: suppress w:type for the document's opening section.
-    auto buildSectPr = [&](const SectionInfo& si, const std::string& hdrRId,
-                           const std::string& ftrRId, bool firstSection) -> std::string {
-        int w = pageWidthDxa(si.page.size, si.page.orientation);
-        int h = pageHeightDxa(si.page.size, si.page.orientation);
-
-        std::string s;
-
-        // 1. headerReference(s) — default only for now
-        if (!hdrRId.empty())
-            s += "<w:headerReference w:type=\"default\" r:id=\"" + hdrRId + "\"/>";
-
-        // 2. footerReference(s) — default only for now
-        if (!ftrRId.empty())
-            s += "<w:footerReference w:type=\"default\" r:id=\"" + ftrRId + "\"/>";
-
-        // 3. type (section-break type) — only for non-first sections
-        if (!firstSection)
-            s += "<w:type w:val=\"" + sectionBreakTypeToString(si.breakType) + "\"/>";
-
-        // 4. pgSz (page size)
-        s += "<w:pgSz w:w=\"" + std::to_string(w) + "\""
-           + " w:h=\"" + std::to_string(h) + "\"";
-        if (si.page.orientation == Orientation::Landscape)
-            s += " w:orient=\"landscape\"";
-        s += "/>";
-
-        // 5. pgMar (page margins)
-        s += "<w:pgMar w:top=\"" + std::to_string(mm(si.page.margins.top))
-           + "\" w:right=\"" + std::to_string(mm(si.page.margins.right))
-           + "\" w:bottom=\"" + std::to_string(mm(si.page.margins.bottom))
-           + "\" w:left=\"" + std::to_string(mm(si.page.margins.left))
-           + "\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>";
-
-        // 6. cols (column definition)
-        s += "<w:cols w:space=\"720\"/>";
-
-        // 7. titlePg (different first page)
-        if (si.titlePg)
-            s += "<w:titlePg/>";
-
-        // 8. docGrid (document grid)
-        s += "<w:docGrid w:linePitch=\"360\"/>";
-
-        return s;
-    };
-
-    // Partition elements into sections
-    struct SecGroup { const SectionInfo* info = nullptr; std::vector<const Element*> elems; };
-    std::vector<SecGroup> secGroups;
-    secGroups.push_back({&m_impl->m_sections[0], {}});
-
-    for (const auto& elem : m_impl->m_elements) {
-        if (elem.type == ElementType::SectionBreak) {
-            int nextIdx = static_cast<int>(secGroups.size());
-            secGroups.push_back({&m_impl->m_sections[nextIdx], {}});
-        } else {
-            secGroups.back().elems.push_back(&elem);
-        }
-    }
-
-    for (size_t si = 0; si < secGroups.size(); ++si) {
-        const auto& group = secGroups[si];
-        const SectionInfo& sec = *group.info;
-        int secW = pageWidthDxa(sec.page.size, sec.page.orientation);
-
-        // Emit elements for this section
-        size_t secXmlStart = xml.size();
-
-        for (const auto* elem : group.elems) {
-            switch (elem->type) {
-                case ElementType::Heading: {
-                    if (elem->headingLevel == 1 && !elem->noNumbering) {
-                        ++chapter;
-                        imgInChapter = 0;
-                        tblInChapter = 0;
-                    }
-                    std::string styleId = "Heading" + std::to_string(elem->headingLevel);
-                    const auto& hs = m_impl->m_headingStyles[elem->headingLevel - 1];
-                    xml += "<w:p>"
-                           "<w:pPr>"
-                           "<w:pStyle w:val=\"" + styleId + "\"/>"
-                           "<w:outlineLvl w:val=\"" + std::to_string(elem->headingLevel - 1) + "\"/>";
-                    if (hs.hasAlignment)
-                        xml += "<w:jc w:val=\"" + alignmentToString(hs.alignment) + "\"/>";
-                    if (m_impl->m_headingNumbering && !elem->noNumbering) {
-                        xml += "<w:numPr>"
-                               "<w:ilvl w:val=\"" + std::to_string(elem->headingLevel - 1) + "\"/>"
-                               "<w:numId w:val=\"10\"/>"
-                               "</w:numPr>";
-                    } else if (elem->noNumbering) {
-                        xml += "<w:numPr><w:numId w:val=\"0\"/></w:numPr>";
-                    }
-                    xml += "</w:pPr>"
-                           "<w:r><w:t xml:space=\"preserve\">" + xmlEscape(elem->text) + "</w:t></w:r>"
-                           "</w:p>";
-                    break;
-                }
-                case ElementType::Paragraph: {
-                    xml += elem->data.paragraph->toXml();
-                    break;
-                }
-                case ElementType::Image: {
-                    Image* img = elem->data.image;
-                    if (img->skipped()) break;
-                    int idx = -1;
-                    for (size_t k = 0; k < m_impl->m_images.size(); ++k) {
-                        if (m_impl->m_images[k].get() == img) { idx = static_cast<int>(k); break; }
-                    }
-                    int rIdNum = idx + 1;
-                    img->setRId("rId_img_" + std::to_string(rIdNum));
-
-                    int marginTwips = static_cast<int>((sec.page.margins.left + sec.page.margins.right) * 567.0);
-                    int contentTwips = secW - marginTwips;
-                    int maxWidthEmu = contentTwips * 635;
-                    auto imgSize = computeImageSize(img->filepath(), img->width(), img->height(), maxWidthEmu);
-                    std::string cx = std::to_string(imgSize.widthEmu);
-                    std::string cy = std::to_string(imgSize.heightEmu);
-
-                    xml += "<w:p>";
-                    xml += "<w:pPr>";
-                    if (img->hasAlignment())
-                        xml += "<w:jc w:val=\"" + alignmentToString(img->alignment()) + "\"/>";
-                    xml += "<w:ind w:firstLine=\"0\"/>";
-                    xml += "</w:pPr>";
-                    xml += "<w:r>"
-                           "<w:drawing>"
-                           "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
-                           "<wp:extent cx=\"" + cx + "\" cy=\"" + cy + "\"/>"
-                           "<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>"
-                           "<wp:docPr id=\"" + std::to_string(rIdNum) + "\" name=\"Picture " + std::to_string(rIdNum) + "\"/>"
-                           "<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" noChangeAspect=\"1\"/></wp:cNvGraphicFramePr>"
-                           "<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">"
-                           "<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
-                           "<pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
-                           "<pic:nvPicPr>"
-                           "<pic:cNvPr id=\"" + std::to_string(rIdNum) + "\" name=\"Picture " + std::to_string(rIdNum) + "\"/>"
-                           "<pic:cNvPicPr/>"
-                           "</pic:nvPicPr>"
-                           "<pic:blipFill>"
-                           "<a:blip r:embed=\"" + img->rId() + "\"/>"
-                           "<a:stretch><a:fillRect/></a:stretch>"
-                           "</pic:blipFill>"
-                           "<pic:spPr>"
-                           "<a:xfrm>"
-                           "<a:off x=\"0\" y=\"0\"/>"
-                           "<a:ext cx=\"" + cx + "\" cy=\"" + cy + "\"/>"
-                           "</a:xfrm>"
-                           "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
-                           "</pic:spPr>"
-                           "</pic:pic>"
-                           "</a:graphicData>"
-                           "</a:graphic>"
-                           "</wp:inline>"
-                           "</w:drawing>"
-                           "</w:r>"
-                           "</w:p>";
-                    if (!img->caption().empty() || m_impl->m_imageNumbering) {
-                        if (m_impl->m_imageNumbering) {
-                            ++imgSeqNum;
-                            ++imgInChapter;
-                            std::string numText = formatCaptionNum(
-                                m_impl->m_imageNumStyle, chapter, imgInChapter, imgSeqNum);
-                            xml += buildCaption(m_impl->m_imageNumPrefix, numText, img->caption());
-                        } else {
-                            xml += buildCaption("", "", img->caption());
-                        }
-                    }
-                    break;
-                }
-                case ElementType::Table: {
-                    Table* tbl = elem->data.table;
-                    if (!tbl->caption().empty() || m_impl->m_tableNumbering) {
-                        if (m_impl->m_tableNumbering) {
-                            ++tblSeqNum;
-                            ++tblInChapter;
-                            std::string numText = formatCaptionNum(
-                                m_impl->m_tableNumStyle, chapter, tblInChapter, tblSeqNum);
-                            xml += buildCaption(m_impl->m_tableNumPrefix, numText, tbl->caption());
-                        } else {
-                            xml += buildCaption("", "", tbl->caption());
-                        }
-                    }
-                    xml += tbl->toXml();
-                    break;
-                }
-                case ElementType::BulletList: {
-                    xml += elem->data.bulletList->toXml();
-                    break;
-                }
-                case ElementType::Equation: {
-                    Equation* eq = elem->data.equation;
-                    if (eq->mode() == EquationMode::Display)
-                        xml += "<w:p>" + eq->toXml() + "</w:p>";
-                    else
-                        xml += "<w:p><w:r>" + eq->toXml() + "</w:r></w:p>";
-                    break;
-                }
-                case ElementType::TOC: {
-                    xml += "<w:p>";
-                    xml += "<w:pPr><w:pStyle w:val=\"TOCHeading\"/></w:pPr>";
-                    xml += "<w:r><w:fldChar w:fldCharType=\"begin\"/></w:r>";
-                    xml += "<w:r><w:instrText xml:space=\"preserve\"> TOC \\o \"" + elem->extra + "\" \\h \\z \\u </w:instrText></w:r>";
-                    xml += "<w:r><w:fldChar w:fldCharType=\"separate\"/></w:r>";
-                    xml += "<w:r><w:t xml:space=\"preserve\">[请在Word中右键点击此处更新目录]</w:t></w:r>";
-                    xml += "<w:r><w:fldChar w:fldCharType=\"end\"/></w:r>";
-                    xml += "</w:p>";
-                    break;
-                }
-                case ElementType::SectionBreak:
-                    break; // handled by section partitioning
-            }
-        }
-
-        // Determine header/footer rIds for this section
-        std::string hdrRId, ftrRId;
-        if (sec.header) {
-            hdrRId = "rIdHeader";
-            if (si > 0) hdrRId += std::to_string(si + 1);
-        }
-        if (sec.footer) {
-            ftrRId = "rIdFooter";
-            if (si > 0) ftrRId += std::to_string(si + 1);
-        }
-
-        std::string sectPrXml = buildSectPr(sec, hdrRId, ftrRId, si == 0);
-
-        if (si < secGroups.size() - 1) {
-            // Non-final section: sectPr goes inside last paragraph's pPr.
-            size_t lastPEnd = xml.rfind("</w:p>");
-
-            if (lastPEnd != std::string::npos && lastPEnd >= secXmlStart) {
-                // A paragraph exists in this section — inject sectPr into it.
-                size_t lastPStart = xml.rfind("<w:p", lastPEnd);
-                size_t pPrClose = xml.rfind("</w:pPr>", lastPEnd);
-
-                if (pPrClose != std::string::npos && pPrClose > lastPStart) {
-                    // Has pPr: insert sectPr before </w:pPr>
-                    xml.insert(pPrClose, "<w:sectPr>" + sectPrXml + "</w:sectPr>");
-                } else {
-                    // No pPr: add one before the first <w:r> or before </w:p>
-                    size_t firstR = xml.find("<w:r", lastPStart);
-                    if (firstR != std::string::npos && firstR < lastPEnd) {
-                        xml.insert(firstR,
-                            "<w:pPr><w:sectPr>" + sectPrXml + "</w:sectPr></w:pPr>");
-                    } else {
-                        xml.insert(lastPEnd,
-                            "<w:pPr><w:sectPr>" + sectPrXml + "</w:sectPr></w:pPr>");
-                    }
-                }
-            } else {
-                // No paragraph in this section — emit an empty one to carry
-                // the section properties (Word requires a paragraph for sectPr).
-                xml += "<w:p><w:pPr><w:sectPr>" + sectPrXml
-                     + "</w:sectPr></w:pPr></w:p>";
-            }
-        } else {
-            // Final section: sectPr at body level
-            xml += "<w:sectPr>" + sectPrXml + "</w:sectPr>";
-        }
-    }
-
-    xml += "</w:body></w:document>";
-}
-
-std::string Document::buildRelationshipsXml() {
-    std::string xml;
-    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-          "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">";
-
-    // Image relationships (document-level)
-    for (size_t i = 0; i < m_impl->m_images.size(); ++i) {
-        if (m_impl->m_images[i]->skipped()) continue;
-        std::string rId = "rId_img_" + std::to_string(i + 1);
-        xml += "<Relationship Id=\"" + rId + "\" "
-               "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" "
-               "Target=\"" + xmlEscape(m_impl->m_images[i]->mediaPath()) + "\"/>";
-    }
-
-    // Image relationships (cell-level from tables)
-    for (const auto& table : m_impl->m_tables) {
-        for (int r = 0; r < table->rows(); ++r) {
-            for (int c = 0; c < table->cols(); ++c) {
-                for (const auto& cimg : table->cell(r, c).images()) {
-                    if (cimg.skipped) continue;
-                    if (!cimg.rId.empty()) {
-                        namespace fs = std::filesystem;
-                        std::string mediaPath = "media/" + fs::u8path(cimg.filepath).filename().u8string();
-                        xml += "<Relationship Id=\"" + cimg.rId + "\" "
-                               "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" "
-                               "Target=\"" + xmlEscape(mediaPath) + "\"/>";
-                    }
-                }
-            }
-        }
-    }
-
-    // Styles relationship
-    xml += "<Relationship Id=\"rIdStyles\" "
-           "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" "
-           "Target=\"styles.xml\"/>";
-
-    // Numbering relationship
-    xml += "<Relationship Id=\"rIdNum\" "
-           "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering\" "
-           "Target=\"numbering.xml\"/>";
-
-    // Header / footer relationships (per-section)
-    for (size_t si = 0; si < m_impl->m_sections.size(); ++si) {
-        const auto& sec = m_impl->m_sections[si];
-        std::string hdrRId = "rIdHeader";
-        std::string ftrRId = "rIdFooter";
-        if (si > 0) {
-            hdrRId += std::to_string(si + 1);
-            ftrRId += std::to_string(si + 1);
-        }
-        if (sec.header) {
-            std::string target = "header" + std::to_string(si + 1) + ".xml";
-            xml += "<Relationship Id=\"" + hdrRId + "\" "
-                   "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/header\" "
-                   "Target=\"" + target + "\"/>";
-        }
-        if (sec.footer) {
-            std::string target = "footer" + std::to_string(si + 1) + ".xml";
-            xml += "<Relationship Id=\"" + ftrRId + "\" "
-                   "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer\" "
-                   "Target=\"" + target + "\"/>";
-        }
-    }
-
-    // Footnotes relationship
-    if (!m_impl->m_footnotes.empty()) {
-        xml += "<Relationship Id=\"rIdFootnotes\" "
-               "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes\" "
-               "Target=\"footnotes.xml\"/>";
-    }
-
-    xml += "</Relationships>";
-    return xml;
-}
+Document& Document::setBibliographyStyle(const std::string& s) { m_impl->requireGeneration(); if(!std::regex_match(s,std::regex("[A-Za-z0-9_-]+")))throw std::invalid_argument("Use a Word bibliography style name"); m_impl->bibliographyStyle=s; return *this; }
+Document& Document::addBibliography(const std::string& title) { if(!title.empty())addHeadingNoNum(title,1); addParagraph().addField("BIBLIOGRAPHY"); return *this; }
+Document& Document::setProperties(const DocumentProperties& p) { m_impl->requireGeneration(); m_impl->properties=p; return *this; }
+Document& Document::setCustomProperty(const std::string& n,const CustomProperty& p) { m_impl->requireGeneration(); if(n.empty())throw std::invalid_argument("Empty custom property name"); m_impl->custom[n]=p; return *this; }
+Document& Document::registerParagraphStyle(const std::string& id,const ParagraphStyle& s) { if(id.empty())throw std::invalid_argument("Empty style ID"); m_impl->paragraphStyles[id]=s; return *this; }
+Document& Document::registerCharacterStyle(const std::string& id,const RunStyle& s,const std::string& base) { if(id.empty())throw std::invalid_argument("Empty style ID"); m_impl->characterStyles[id]={s,base}; return *this; }
+Document& Document::registerTableStyle(const std::string& id,const TableStyleDefinition& s) { if(id.empty())throw std::invalid_argument("Empty style ID"); m_impl->tableStyles[id]=s; return *this; }
 
 std::string Document::buildStylesXml() {
-    // Default sizes per level
-    const int defaultSizes[6] = {22, 16, 14, 13, 12, 11};
-    const double defaultBefore[6] = {18, 14, 12, 10, 8, 8};
-    const double defaultAfter[6] = {6, 5, 4, 3, 3, 3};
-
-    auto makeHeadingStyle = [&](int level, int idx) {
-        const auto& hs = m_impl->m_headingStyles[idx];
-        int sz = hs.fontSize > 0 ? hs.fontSize : defaultSizes[idx];
-        int szHalf = sz * 2; // OOXML uses half-points
-
-        double before = hs.spaceBefore >= 0 ? hs.spaceBefore : defaultBefore[idx];
-        double after = hs.spaceAfter >= 0 ? hs.spaceAfter : defaultAfter[idx];
-
-        std::string xml;
-        xml += "<w:style w:type=\"paragraph\" w:styleId=\"Heading" + std::to_string(level) + "\">";
-        xml += "<w:name w:val=\"heading " + std::to_string(level) + "\"/>";
-        xml += "<w:basedOn w:val=\"Normal\"/>";
-        xml += "<w:pPr>";
-        xml += "<w:ind w:firstLine=\"0\"/>"; // override Normal indent
-        xml += "<w:outlineLvl w:val=\"" + std::to_string(level - 1) + "\"/>";
-
-        // Combine all spacing attributes into a single <w:spacing> element
-        // (multiple <w:spacing/> elements are invalid OOXML)
-        {
-            bool needSpacing = (before > 0) || (after > 0) || (hs.lineSpacing > 0);
-            if (needSpacing) {
-                xml += "<w:spacing";
-                if (before > 0) xml += " w:before=\"" + std::to_string(static_cast<int>(before * 20)) + "\"";
-                if (after > 0)  xml += " w:after=\"" + std::to_string(static_cast<int>(after * 20)) + "\"";
-                if (hs.lineSpacing > 0) {
-                    int lineVal = static_cast<int>(hs.lineSpacing * 240);
-                    xml += " w:line=\"" + std::to_string(lineVal) + "\" w:lineRule=\"auto\"";
-                }
-                xml += "/>";
-            }
-        }
-
-        xml += "<w:keepNext/>";
-        xml += "</w:pPr>";
-        xml += "<w:rPr>";
-        if (hs.bold) xml += "<w:b/>";
-        if (hs.italic) xml += "<w:i/>";
-        xml += "<w:sz w:val=\"" + std::to_string(szHalf) + "\"/>";
-        xml += "<w:szCs w:val=\"" + std::to_string(szHalf) + "\"/>";
-        if (!hs.color.empty()) xml += "<w:color w:val=\"" + hs.color + "\"/>";
-        if (!hs.font.empty()) {
-            xml += "<w:rFonts w:ascii=\"" + hs.font + "\" w:hAnsi=\"" + hs.font + "\" "
-                   "w:eastAsia=\"" + hs.font + "\" w:cs=\"" + hs.font + "\"/>";
-        }
-        xml += "</w:rPr>";
-        xml += "</w:style>";
-        return xml;
+    pugi::xml_document d; parseXml(d,documentXml("w:styles","")); auto root=d.document_element();
+    auto defaults=root.append_child("w:docDefaults"); RunStyle normal; normal.fontSize(m_impl->bodySize).font(m_impl->ascii).eastAsiaFont(m_impl->eastAsia);
+    appendXml(defaults.append_child("w:rPrDefault"),normal.toXml());
+    auto fonts=defaults.child("w:rPrDefault").child("w:rPr").child("w:rFonts");
+    if(fonts&&!m_impl->hAnsi.empty())fonts.attribute("w:hAnsi")=m_impl->hAnsi.c_str();
+    ParagraphStyle ps; ps.lineSpacing=m_impl->bodySpacing; ps.after=Length::pt(8); appendXml(defaults.append_child("w:pPrDefault").append_child("w:pPr"),ps.toXml());
+    auto style=[&](const std::string& id,const char* type,const std::string& base) {
+        for(auto old=root.first_child();old;) { auto next=old.next_sibling(); if(std::string(old.name())=="w:style"&&id==old.attribute("w:styleId").value())root.remove_child(old); old=next; }
+        auto n=root.append_child("w:style"); n.append_attribute("w:type")=type; n.append_attribute("w:styleId")=id.c_str(); child(n,"w:name","w:val",id); if(!base.empty())child(n,"w:basedOn","w:val",base); return n;
     };
-
-    std::string normalIndent;
-    if (m_impl->m_defaultIndent > 0) {
-        normalIndent = "<w:ind w:firstLine=\"" + std::to_string(m_impl->m_defaultIndent) + "\"/>";
+    auto norm=style("Normal","paragraph",""); norm.append_attribute("w:default")="1";
+    for(int level=1;level<=9;++level) {
+        const auto& h=m_impl->headingStyles[level-1]; auto n=style("Heading"+std::to_string(level),"paragraph","Normal"); child(n,"w:next","w:val","Normal"); n.append_child("w:qFormat");
+        ParagraphStyle p; p.keepNext=Toggle::On; p.keepLines=Toggle::On; p.before=Length::pt(h.spaceBefore>=0?h.spaceBefore:12); p.after=Length::pt(h.spaceAfter>=0?h.spaceAfter:6); p.lineSpacing=h.lineSpacing; if(h.hasAlignment)p.alignment=h.alignment;
+        auto pr=n.append_child("w:pPr"); appendXml(pr,p.toXml()); child(pr,"w:outlineLvl","w:val",std::to_string(level-1));
+        RunStyle r; r.bold(h.bold).italic(h.italic).font(h.font).eastAsiaFont(h.font).fontSize(h.fontSize>0?h.fontSize:std::max(11,28-level*2)).color(h.color); appendXml(n,r.toXml());
     }
-
-    // Build Normal style rPr (font + size)
-    std::string normalRPr;
-    {
-        int sz = m_impl->m_bodyFontSize > 0 ? static_cast<int>(m_impl->m_bodyFontSize * 2) : 22;
-        normalRPr = "<w:sz w:val=\"" + std::to_string(sz) + "\"/>"
-                    "<w:szCs w:val=\"" + std::to_string(sz) + "\"/>";
-        if (!m_impl->m_bodyFontEastAsia.empty()) {
-            std::string ascii = m_impl->m_bodyFontAscii.empty() ? m_impl->m_bodyFontEastAsia : m_impl->m_bodyFontAscii;
-            normalRPr += "<w:rFonts w:ascii=\"" + ascii + "\" "
-                         "w:hAnsi=\"" + m_impl->m_bodyFontHAnsi + "\" "
-                         "w:eastAsia=\"" + m_impl->m_bodyFontEastAsia + "\"/>";
-        }
+    for(auto id:{"Caption","ListParagraph","FootnoteText","EndnoteText","CommentText"})style(id,"paragraph","Normal");
+    for(auto id:{"FootnoteReference","EndnoteReference"})appendXml(style(id,"character",""),RunStyle().superscript().toXml());
+    appendXml(style("Hyperlink","character",""),RunStyle().color("0563C1").underline().toXml());
+    for(const auto& e:m_impl->paragraphStyles) { auto n=style(e.first,"paragraph",e.second.basedOn); if(!e.second.next.empty())child(n,"w:next","w:val",e.second.next); appendXml(n.append_child("w:pPr"),e.second.toXml()); appendXml(n,e.second.run.toXml()); }
+    for(const auto& e:m_impl->characterStyles)appendXml(style(e.first,"character",e.second.second),e.second.first.toXml());
+    for(const auto& e:m_impl->tableStyles) {
+        auto n=style(e.first,"table",e.second.basedOn); appendXml(n,e.second.run.toXml());
+        Table table(1,1); if(e.second.border)table.setBorder(*e.second.border); table.setShading(e.second.shading).setCellMargins(e.second.cellMargin,e.second.cellMargin,e.second.cellMargin,e.second.cellMargin);
+        pugi::xml_document t; parseXml(t,documentXml("xw:root",table.toXml())); auto tp=t.document_element().child("w:tbl").child("w:tblPr"); tp.remove_child("w:tblW"); tp.remove_child("w:jc"); tp.remove_child("w:tblLayout"); n.append_copy(tp);
     }
-
-    // Build Normal style spacing
-    double lineSpacing = m_impl->m_bodyLineSpacing > 0 ? m_impl->m_bodyLineSpacing : 1.15;
-    int lineVal = static_cast<int>(lineSpacing * 240);
-
-    std::string xml;
-    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-          "<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
-
-          // Normal (default paragraph style)
-          "<w:style w:type=\"paragraph\" w:styleId=\"Normal\" w:default=\"1\">"
-          "<w:name w:val=\"Normal\"/>"
-          "<w:pPr>"
-          "<w:spacing w:after=\"160\" w:line=\"" + std::to_string(lineVal) + "\" w:lineRule=\"auto\"/>"
-          + normalIndent +
-          "</w:pPr>"
-          "<w:rPr>" + normalRPr + "</w:rPr>"
-          "</w:style>"
-
-          // List paragraph style
-          "<w:style w:type=\"paragraph\" w:styleId=\"ListParagraph\">"
-          "<w:name w:val=\"List Paragraph\"/>"
-          "<w:basedOn w:val=\"Normal\"/>"
-          "<w:pPr>"
-          "<w:ind w:left=\"420\"/>"
-          "</w:pPr>"
-          "</w:style>"
-
-          // TOC heading style
-          "<w:style w:type=\"paragraph\" w:styleId=\"TOCHeading\">"
-          "<w:name w:val=\"TOC Heading\"/>"
-          "<w:basedOn w:val=\"Heading1\"/>"
-          "<w:next w:val=\"Normal\"/>"
-          "<w:pPr>"
-          "<w:outlineLvl w:val=\"9\"/>"
-          "<w:ind w:firstLine=\"0\"/>"
-          "</w:pPr>"
-          "</w:style>"
-
-          // TOC level styles (used by Word when generating TOC entries)
-          "<w:style w:type=\"paragraph\" w:styleId=\"TOC1\">"
-          "<w:name w:val=\"TOC 1\"/>"
-          "<w:basedOn w:val=\"Normal\"/>"
-          "<w:pPr><w:ind w:firstLine=\"0\" w:left=\"0\"/></w:pPr>"
-          "<w:rPr><w:b/></w:rPr>"
-          "</w:style>"
-
-          "<w:style w:type=\"paragraph\" w:styleId=\"TOC2\">"
-          "<w:name w:val=\"TOC 2\"/>"
-          "<w:basedOn w:val=\"Normal\"/>"
-          "<w:pPr><w:ind w:firstLine=\"0\" w:left=\"240\"/></w:pPr>"
-          "</w:style>"
-
-          "<w:style w:type=\"paragraph\" w:styleId=\"TOC3\">"
-          "<w:name w:val=\"TOC 3\"/>"
-          "<w:basedOn w:val=\"Normal\"/>"
-          "<w:pPr><w:ind w:firstLine=\"0\" w:left=\"480\"/></w:pPr>"
-          "</w:style>"
-
-          // Footnote Reference (superscript style in body text and footnote)
-          "<w:style w:type=\"character\" w:styleId=\"FootnoteReference\">"
-          "<w:name w:val=\"footnote reference\"/>"
-          "<w:rPr>"
-          "<w:vertAlign w:val=\"superscript\"/>"
-          "<w:sz w:val=\"18\"/><w:szCs w:val=\"18\"/>"
-          "</w:rPr>"
-          "</w:style>"
-
-          // Footnote Text paragraph style
-          "<w:style w:type=\"paragraph\" w:styleId=\"FootnoteText\">"
-          "<w:name w:val=\"footnote text\"/>"
-          "<w:basedOn w:val=\"Normal\"/>"
-          "<w:pPr>"
-          "<w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/>"
-          "<w:ind w:firstLine=\"0\"/>"
-          "</w:pPr>"
-          "<w:rPr><w:sz w:val=\"18\"/><w:szCs w:val=\"18\"/></w:rPr>"
-          "</w:style>"
-
-          + makeHeadingStyle(1, 0) + makeHeadingStyle(2, 1)
-          + makeHeadingStyle(3, 2) + makeHeadingStyle(4, 3)
-          + makeHeadingStyle(5, 4) + makeHeadingStyle(6, 5)
-
-          + "</w:styles>";
-    return xml;
-}
-
-std::string Document::buildFootnotesXml() {
-    if (m_impl->m_footnotes.empty()) return {};
-
-    std::string xml;
-    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-          "<w:footnotes xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""
-          " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">";
-
-    // Separator footnote (id=-1, type=separator)
-    xml += "<w:footnote w:type=\"separator\" w:id=\"-1\">"
-           "<w:p>"
-           "<w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr>"
-           "<w:r><w:separator/></w:r>"
-           "</w:p>"
-           "</w:footnote>";
-
-    // Continuation separator footnote (id=0, type=continuationSeparator)
-    xml += "<w:footnote w:type=\"continuationSeparator\" w:id=\"0\">"
-           "<w:p>"
-           "<w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr>"
-           "<w:r><w:continuationSeparator/></w:r>"
-           "</w:p>"
-           "</w:footnote>";
-
-    // Normal footnotes
-    for (const auto& fn : m_impl->m_footnotes) {
-        xml += "<w:footnote w:id=\"" + std::to_string(fn.id) + "\">"
-               "<w:p>"
-               "<w:pPr><w:pStyle w:val=\"FootnoteText\"/></w:pPr>"
-               "<w:r>"
-               "<w:rPr><w:rStyle w:val=\"FootnoteReference\"/></w:rPr>"
-               "<w:footnoteRef/>"
-               "</w:r>"
-               "<w:r>"
-               "<w:t xml:space=\"preserve\"> " + xmlEscape(fn.text) + "</w:t>"
-               "</w:r>"
-               "</w:p>"
-               "</w:footnote>";
+    // Style inheritance must reference existing styles without cycles.
+    std::map<std::string,std::string> bases;
+    for(auto n:root.children("w:style"))bases[n.attribute("w:styleId").value()]=n.child("w:basedOn").attribute("w:val").value();
+    if(m_impl->isTemplate&&m_impl->templateParts.count("word/styles.xml")) {
+        pugi::xml_document existing; parseXml(existing,m_impl->templateParts.at("word/styles.xml")); canonicalizeWordPrefixes(existing.document_element());
+        for(auto n:existing.document_element().children("w:style")) { std::string id=n.attribute("w:styleId").value(); if(!bases.count(id))bases[id]=n.child("w:basedOn").attribute("w:val").value(); }
     }
-
-    xml += "</w:footnotes>";
-    return xml;
+    for(const auto& b:bases) { std::set<std::string> chain; auto s=b.first; while(!s.empty()) { if(!bases.count(s)||!chain.insert(s).second)throw std::invalid_argument("Invalid style inheritance at "+s); s=bases.at(s); } }
+    return xmlString(d);
 }
-
-std::string Document::buildHeaderXml() {
-    std::string xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-        "<w:hdr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""
-        " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\""
-        " xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">";
-    // Use section 0 header for single-section backward compatibility
-    xml += m_impl->m_sections[0].header
-        ? m_impl->m_sections[0].header->toXml() : std::string("<w:p/>");
-    xml += "</w:hdr>";
-    return xml;
-}
-
-std::string Document::buildFooterXml() {
-    std::string xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-        "<w:ftr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""
-        " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\""
-        " xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">";
-    xml += m_impl->m_sections[0].footer
-        ? m_impl->m_sections[0].footer->toXml() : std::string("<w:p/>");
-    xml += "</w:ftr>";
-    return xml;
-}
-
-std::string Document::buildHeadingNumberingXml() {
-    std::string xml;
-    xml += "<w:abstractNum w:abstractNumId=\"10\">"
-           "<w:multiLevelType w:val=\"hybridMultilevel\"/>";
-
-    // Level 1 text depends on format
-    std::string l1Text = (m_impl->m_headingNumFormat == HeadingNumFormat::Chapter)
-        ? "\xE7\xAC\xAC%1\xE7\xAB\xA0"  // 第%1章
-        : "%1";
-
-    const char* lvlTexts[] = {nullptr, "%1.%2", "%1.%2.%3",
-                              "%1.%2.%3.%4", "%1.%2.%3.%4.%5",
-                              "%1.%2.%3.%4.%5.%6"};
-    for (int i = 0; i < 6; ++i) {
-        std::string lvlText = (i == 0) ? l1Text : lvlTexts[i];
-        xml += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"" + std::to_string(i) + "\">"
-               "<w:start w:val=\"1\"/>"
-               "<w:numFmt w:val=\"decimal\"/>"
-               "<w:lvlText w:val=\"" + lvlText + "\"/>"
-               "<w:lvlJc w:val=\"left\"/>"
-               "<w:pPr>"
-               "<w:tabs><w:tab w:val=\"num\" w:pos=\"360\"/></w:tabs>"
-               "<w:ind w:left=\"360\" w:hanging=\"360\"/>"
-               "</w:pPr>"
-               "</w:lvl>";
-    }
-    xml += "</w:abstractNum>";
-    return xml;
-}
-
 std::string Document::buildNumberingXml() {
-    std::string xml;
-    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-          "<w:numbering xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">";
-
-    // --- Abstract 0: Bullet list (· 不编号，按列表格式) ---
-    // Define all 9 levels so Word does not fall back to Heading numbering
-    xml += "<w:abstractNum w:abstractNumId=\"0\">"
-           "<w:multiLevelType w:val=\"hybridMultilevel\"/>";
-    for (int i = 0; i < 9; ++i) {
-        xml += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"" + std::to_string(i) + "\">"
-               "<w:start w:val=\"1\"/>"
-               "<w:numFmt w:val=\"bullet\"/>"
-               "<w:lvlText w:val=\"\xC2\xB7\"/>"   // · (U+00B7) middle dot
-               "<w:lvlJc w:val=\"left\"/>"
-               "<w:pPr>"
-               "<w:tabs><w:tab w:val=\"num\" w:pos=\"" + std::to_string((i + 1) * 420) + "\"/></w:tabs>"
-               "<w:ind w:left=\"" + std::to_string((i + 1) * 420) + "\" w:hanging=\"420\"/>"
-               "</w:pPr>"
-               "<w:rPr><w:rFonts w:hint=\"default\"/></w:rPr>"
-               "</w:lvl>";
+    pugi::xml_document d; parseXml(d,documentXml("w:numbering","")); auto r=d.document_element(); auto a=r.append_child("w:abstractNum"); a.append_attribute("w:abstractNumId")=1; child(a,"w:multiLevelType","w:val","multilevel");
+    for(int i=0;i<9;++i) {
+        auto l=a.append_child("w:lvl"); l.append_attribute("w:ilvl")=i; child(l,"w:start","w:val","1"); child(l,"w:numFmt","w:val","decimal");
+        std::string text; for(int j=0;j<=i;++j) {if(j)text+="."; text+="%"+std::to_string(j+1);}
+        if(i==0&&m_impl->headingFormat==HeadingNumFormat::Chapter)text=u8"第 %1 章";
+        child(l,"w:lvlText","w:val",text); child(l,"w:lvlJc","w:val","left");
     }
-    xml += "</w:abstractNum>";
-
-    // --- Abstract 1: Ordered list (1. 2. 3. ...) ---
-    xml += "<w:abstractNum w:abstractNumId=\"1\">"
-           "<w:multiLevelType w:val=\"hybridMultilevel\"/>";
-    for (int i = 0; i < 9; ++i) {
-        xml += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"" + std::to_string(i) + "\">"
-               "<w:start w:val=\"1\"/>"
-               "<w:numFmt w:val=\"decimal\"/>"
-               "<w:lvlText w:val=\"%" + std::to_string(i + 1) + ".\"/>"
-               "<w:lvlJc w:val=\"left\"/>"
-               "<w:pPr>"
-               "<w:tabs><w:tab w:val=\"num\" w:pos=\"" + std::to_string((i + 1) * 420) + "\"/></w:tabs>"
-               "<w:ind w:left=\"" + std::to_string((i + 1) * 420) + "\" w:hanging=\"420\"/>"
-               "</w:pPr>"
-               "</w:lvl>";
-    }
-    xml += "</w:abstractNum>";
-
-    // --- Heading abstractNum (only when needed) ---
-    if (m_impl->m_headingNumbering) {
-        xml += buildHeadingNumberingXml();
-    }
-
-    // --- Num instances (must come AFTER all abstractNum definitions) ---
-    // numId=1: Bullet list (shared by all bullet lists)
-    xml += "<w:num w:numId=\"1\">"
-           "<w:abstractNumId w:val=\"0\"/>"
-           "</w:num>";
-
-    // numId=3+: Each ordered list gets its own restart-from-1
-    for (int id = 3; id < m_impl->m_nextOrderedListId; ++id) {
-        xml += "<w:num w:numId=\"" + std::to_string(id) + "\">"
-               "<w:abstractNumId w:val=\"1\"/>"
-               "<w:lvlOverride w:ilvl=\"0\">"
-               "<w:startOverride w:val=\"1\"/>"
-               "</w:lvlOverride>"
-               "</w:num>";
-    }
-
-    // numId=10: Heading numbering instance
-    if (m_impl->m_headingNumbering) {
-        xml += "<w:num w:numId=\"10\">"
-               "<w:abstractNumId w:val=\"10\"/>"
-               "</w:num>";
-    }
-
-    xml += "</w:numbering>";
-    return xml;
+    auto n=r.append_child("w:num"); n.append_attribute("w:numId")=1; child(n,"w:abstractNumId","w:val","1"); return xmlString(d);
 }
-
-std::string Document::buildContentTypesXml() {
-    std::string xml;
-    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-          "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
-          "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
-          "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
-          "<Override PartName=\"/word/document.xml\" "
-          "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
-          "<Override PartName=\"/word/numbering.xml\" "
-          "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml\"/>"
-          "<Override PartName=\"/word/styles.xml\" "
-          "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>";
-
-    for (size_t si = 0; si < m_impl->m_sections.size(); ++si) {
-        const auto& sec = m_impl->m_sections[si];
-        if (sec.header) {
-            xml += "<Override PartName=\"/word/header" + std::to_string(si + 1) + ".xml\" "
-                   "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml\"/>";
-        }
-        if (sec.footer) {
-            xml += "<Override PartName=\"/word/footer" + std::to_string(si + 1) + ".xml\" "
-                   "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>";
-        }
+namespace {
+std::string notesXml(const std::map<int,std::unique_ptr<Note>>& notes,bool end) {
+    std::string tag=end?"endnote":"footnote",content;
+    for(int i=-1;i<=0;++i)content+="<w:"+tag+" w:type=\""+(i==-1?"separator":"continuationSeparator")+"\" w:id=\""+std::to_string(i)+"\"><w:p><w:r><w:"+(i==-1?"separator":"continuationSeparator")+"/></w:r></w:p></w:"+tag+">";
+    for(const auto& entry:notes) {
+        pugi::xml_document f; parseXml(f,documentXml("xw:root",entry.second->toXml())); auto p=f.document_element().first_child(); if(std::string(p.name())!="w:p")p=f.document_element().prepend_child("w:p");
+        auto pr=p.child("w:pPr"); if(!pr)pr=p.prepend_child("w:pPr"); if(!pr.child("w:pStyle"))pr.prepend_child("w:pStyle").append_attribute("w:val")=end?"EndnoteText":"FootnoteText";
+        auto run=p.insert_child_after("w:r",pr); appendXml(run,"<w:rPr><w:rStyle w:val=\""+std::string(end?"EndnoteReference":"FootnoteReference")+"\"/></w:rPr><w:"+tag+"Ref/>");
+        content+="<w:"+tag+" w:id=\""+std::to_string(entry.first)+"\">"; for(auto n:f.document_element().children())content+=xmlString(n); content+="</w:"+tag+">";
     }
-    if (!m_impl->m_footnotes.empty()) {
-        xml += "<Override PartName=\"/word/footnotes.xml\" "
-               "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml\"/>";
-    }
-
-    // Image types (document-level)
-    for (const auto& img : m_impl->m_images) {
-        if (img->skipped()) continue;
-        namespace fs = std::filesystem;
-        std::string ext = fs::u8path(img->filepath()).extension().u8string();
-        if (!ext.empty()) ext = ext.substr(1);
-        xml += "<Override PartName=\"/word/" + img->mediaPath() + "\" "
-               "ContentType=\"" + imageContentType(ext) + "\"/>";
-    }
-
-    // Image types (cell-level from tables)
-    for (const auto& table : m_impl->m_tables) {
-        for (int r = 0; r < table->rows(); ++r) {
-            for (int c = 0; c < table->cols(); ++c) {
-                for (const auto& cimg : table->cell(r, c).images()) {
-                    if (cimg.skipped) continue;
-                    if (!cimg.rId.empty()) {
-                        namespace fs = std::filesystem;
-                        std::string mediaPath = "media/" + fs::u8path(cimg.filepath).filename().u8string();
-                        std::string ext = fs::u8path(cimg.filepath).extension().u8string();
-                        if (!ext.empty()) ext = ext.substr(1);
-                        xml += "<Override PartName=\"/word/" + mediaPath + "\" "
-                               "ContentType=\"" + imageContentType(ext) + "\"/>";
-                    }
-                }
-            }
-        }
-    }
-
-    xml += "</Types>";
-    return xml;
+    return documentXml("w:"+tag+"s",content);
 }
-
-bool Document::save(const std::string& filepath) {
-    if (m_impl->m_isTemplate)
-        return saveTemplate(filepath);
-
+void addMetadata(Package& package,const DocumentProperties& props,const std::map<std::string,CustomProperty>& custom) {
+    pugi::xml_document d; auto r=d.append_child("cp:coreProperties"); r.append_attribute("xmlns:cp")="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"; r.append_attribute("xmlns:dc")="http://purl.org/dc/elements/1.1/";
+    auto text=[&](const char* name,const std::string& s){if(!s.empty())r.append_child(name).text().set(s.c_str());};
+    text("dc:title",props.title); text("dc:subject",props.subject); text("dc:creator",props.creator); text("cp:keywords",props.keywords); text("dc:description",props.description); text("cp:lastModifiedBy",props.lastModifiedBy); text("dc:language",props.language);
+    package.addPart("docProps/core.xml",xmlString(d),"application/vnd.openxmlformats-package.core-properties+xml"); package.relate("","docProps/core.xml","http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties");
+    if(custom.empty())return;
+    pugi::xml_document c; auto cr=c.append_child("Properties"); cr.append_attribute("xmlns")="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties"; cr.append_attribute("xmlns:vt")="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes";
+    int id=2; for(const auto& entry:custom) {
+        const auto& v=entry.second;
+        if(v.type==PropertyType::Number) { size_t used=0; double value=std::stod(v.value,&used); if(used!=v.value.size()||!std::isfinite(value))throw std::invalid_argument("Invalid numeric property"); }
+        if(v.type==PropertyType::Boolean&&v.value!="true"&&v.value!="false")throw std::invalid_argument("Boolean property must be true or false");
+        if(v.type==PropertyType::Date&&!std::regex_match(v.value,std::regex("[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")))throw std::invalid_argument("Date property must be UTC ISO 8601");
+        auto p=cr.append_child("property"); p.append_attribute("fmtid")="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}"; p.append_attribute("pid")=id++; p.append_attribute("name")=entry.first.c_str(); const char* tags[]={"vt:lpwstr","vt:r8","vt:bool","vt:filetime"}; p.append_child(tags[static_cast<int>(v.type)]).text().set(v.value.c_str());
+    }
+    package.addPart("docProps/custom.xml",xmlString(c),"application/vnd.openxmlformats-officedocument.custom-properties+xml"); package.relate("","docProps/custom.xml",std::string(relNs())+"custom-properties");
+}
+}
+bool Document::save(const std::string& path) { return saveDetailed(path).success; }
+SaveResult Document::saveDetailed(const std::string& path,const SaveOptions& options) {
+    Package package; package.options=options;
+    SaveResult result;
     try {
-        namespace fs = std::filesystem;
-
-        // Probe each image source file. Missing/unreadable files are marked
-        // skipped and dropped from the docx so the resulting file is still
-        // a valid OPC package that Word can open.
-        auto probe = [](const std::string& p) {
-            if (p.empty()) return false;
-            std::error_code ec;
-            return fs::is_regular_file(fs::u8path(p), ec);
-        };
-        for (auto& img : m_impl->m_images) {
-            if (!probe(img->filepath())) {
-                img->setSkipped(true);
-                std::cerr << "[xword] warning: skipping missing image '"
-                          << img->filepath() << "'\n";
+        package.imageNumbering=m_impl->imageNumbering; package.tableNumbering=m_impl->tableNumbering; package.imagePrefix=m_impl->imagePrefix; package.tablePrefix=m_impl->tablePrefix;
+        package.imageByChapter=m_impl->imageNumStyle==CaptionNumStyle::ByChapter; package.tableByChapter=m_impl->tableNumStyle==CaptionNumStyle::ByChapter;
+        if(m_impl->isTemplate) {
+            package.parts=m_impl->templateParts;
+            for(auto& entry:package.parts)if(entry.first=="word/document.xml"||entry.first.find("word/header")==0||entry.first.find("word/footer")==0)if(entry.first.size()>4&&entry.first.substr(entry.first.size()-4)==".xml")entry.second=renderXml(entry.second);
+            // Merge required built-in/new styles, retaining template definitions.
+            pugi::xml_document styles,generated; parseXml(generated,buildStylesXml());
+            if(package.parts.count("word/styles.xml"))parseXml(styles,package.parts.at("word/styles.xml")); else parseXml(styles,documentXml("w:styles",""));
+            std::set<std::string> ids; for(auto n:styles.document_element().children("w:style"))ids.insert(n.attribute("w:styleId").value());
+            for(auto n:generated.document_element().children("w:style")) {
+                std::string id=n.attribute("w:styleId").value(); bool explicitStyle=m_impl->paragraphStyles.count(id)||m_impl->characterStyles.count(id)||m_impl->tableStyles.count(id);
+                if(ids.count(id)&&explicitStyle)for(auto old=styles.document_element().first_child();old;) { auto next=old.next_sibling(); if(id==old.attribute("w:styleId").value())styles.document_element().remove_child(old); old=next; }
+                if(!ids.count(id)||explicitStyle)styles.document_element().append_copy(n);
             }
-        }
-        for (auto& table : m_impl->m_tables) {
-            for (int r = 0; r < table->rows(); ++r) {
-                for (int c = 0; c < table->cols(); ++c) {
-                    for (auto& cimg : table->cell(r, c).images()) {
-                        if (!probe(cimg.filepath)) {
-                            cimg.skipped = true;
-                            std::cerr << "[xword] warning: skipping missing image '"
-                                      << cimg.filepath << "'\n";
-                        }
-                    }
+            package.addPart("word/styles.xml",xmlString(styles),Package::wordType("styles"));
+        } else {
+            package.addPart("word/styles.xml",buildStylesXml(),Package::wordType("styles"));
+            package.addPart("word/numbering.xml",buildNumberingXml(),Package::wordType("numbering"));
+            std::string body;
+            for(size_t i=0;i<m_impl->sections.size();++i) {
+                const auto& entry=m_impl->sections[i]; const auto& sec=*entry.settings;
+                std::string refs; const char* hfTypes[]={"default","first","even"};
+                for(bool footer:{false,true})for(int type=0;type<3;++type) {
+                    auto c=footer?sec.footerContent(static_cast<HeaderFooterType>(type)):sec.headerContent(static_cast<HeaderFooterType>(type)); if(!c)continue;
+                    std::string tag=footer?"footer":"header",file=tag+std::to_string(i+1)+"_"+hfTypes[type]+".xml";
+                    std::string contents=c->toXml(); if(contents.empty())contents="<w:p/>";
+                    package.addPart("word/"+file,documentXml(footer?"w:ftr":"w:hdr","<xw:section width=\""+std::to_string(sec.contentWidth())+"\">"+contents+"</xw:section>"),Package::wordType(tag));
+                    auto id=package.relate("word/document.xml",file,std::string(relNs())+tag);
+                    refs+="<w:"+tag+"Reference w:type=\""+hfTypes[type]+"\" r:id=\""+id+"\"/>";
                 }
+                body+="<xw:section width=\""+std::to_string(sec.columnWidth())+"\">"+entry.body->toXml();
+                std::string sect="<w:sectPr>"+refs+sec.propertiesXml()+"</w:sectPr>";
+                if(i+1<m_impl->sections.size())body+="<w:p><w:pPr>"+sect+"</w:pPr></w:p>";
+                else body+=sect;
+                body+="</xw:section>";
             }
+            package.addPart("word/document.xml",documentXml("w:document","<w:body>"+body+"</w:body>"),Package::wordType("document.main"));
+            package.relate("","word/document.xml",std::string(relNs())+"officeDocument");
+            addMetadata(package,m_impl->properties,m_impl->custom);
         }
-
-        // Collect and register cell images from all tables
-        std::vector<CellImage*> cellImages;
-        for (auto& table : m_impl->m_tables) {
-            table->collectCellImages(cellImages);
+        package.relate("word/document.xml","styles.xml",std::string(relNs())+"styles");
+        for(bool end:{false,true}) {
+            const auto& notes=end?m_impl->endnotes:m_impl->footnotes; if(notes.empty())continue;
+            std::string name=end?"endnotes":"footnotes";
+            package.addPart("word/"+name+".xml",notesXml(notes,end),Package::wordType(name)); package.relate("word/document.xml",name+".xml",std::string(relNs())+name);
         }
-
-        // Assign rIds to cell images (skip dropped ones)
-        int imgIndex = static_cast<int>(m_impl->m_images.size());
-        int cellRidCounter = 0;
-        for (auto* cimg : cellImages) {
-            if (cimg->skipped) {
-                cimg->rId.clear();
-                continue;
+        if(!m_impl->comments.empty()) {
+            std::string xml; for(size_t i=0;i<m_impl->comments.size();++i) { const auto& c=m_impl->comments[i]; Paragraph p; p.addRun(c.text); xml+="<w:comment w:id=\""+std::to_string(i)+"\" w:author=\""+xmlEscape(c.author)+"\" w:date=\""+xmlEscape(c.date)+"\">"+p.toXml()+"</w:comment>"; }
+            package.addPart("word/comments.xml",documentXml("w:comments",xml),Package::wordType("comments")); package.relate("word/document.xml","comments.xml",std::string(relNs())+"comments");
+        }
+        pugi::xml_document settings;
+        if(package.parts.count("word/settings.xml"))parseXml(settings,package.parts.at("word/settings.xml")); else parseXml(settings,documentXml("w:settings",""));
+        auto sr=settings.document_element(); auto update=sr.child("w:updateFields");
+        if(!update) {
+            pugi::xml_node before;
+            const std::set<std::string> following={"w:footnotePr","w:endnotePr","w:compat","w:docVars","w:rsids","m:mathPr","w:attachedSchema","w:themeFontLang","w:clrSchemeMapping","w:doNotIncludeSubdocsInStats","w:doNotAutoCompressPictures","w:forceUpgrade","w:captions","w:readModeInkLockDown","w:smartTagType","sl:schemaLibrary","w:shapeDefaults","w:decimalSymbol","w:listSeparator"};
+            for(auto n:sr.children())if(following.count(n.name())){before=n;break;}
+            update=before?sr.insert_child_before("w:updateFields",before):sr.append_child("w:updateFields"); update.append_attribute("w:val");
+        }
+        if(!update.attribute("w:val"))update.append_attribute("w:val"); update.attribute("w:val")="true";
+        if(m_impl->evenOdd&&!sr.child("w:evenAndOddHeaders"))sr.prepend_child("w:evenAndOddHeaders");
+        for(bool end:{false,true}) {
+            if((end?m_impl->endnotes:m_impl->footnotes).empty())continue;
+            const char* tag=end?"w:endnotePr":"w:footnotePr"; auto pr=sr.child(tag); if(!pr)pr=sr.append_child(tag);
+            for(int id:{-1,0}) { auto n=pr.append_child(end?"w:endnote":"w:footnote"); n.append_attribute("w:id")=id; }
+        }
+        // Compatibility mode 15 = Word 2013 and newer; no layout engine dependency.
+        if(!sr.child("w:compat")) { auto c=sr.append_child("w:compat").append_child("w:compatSetting"); c.append_attribute("w:name")="compatibilityMode"; c.append_attribute("w:uri")="http://schemas.microsoft.com/office/word"; c.append_attribute("w:val")="15"; }
+        package.addPart("word/settings.xml",xmlString(settings),Package::wordType("settings")); package.relate("word/document.xml","settings.xml",std::string(relNs())+"settings");
+        if(!m_impl->sources.empty()) {
+            pugi::xml_document b; auto root=b.append_child("b:Sources"); root.append_attribute("xmlns:b")="http://schemas.openxmlformats.org/officeDocument/2006/bibliography"; root.append_attribute("SelectedStyle")=("\\"+m_impl->bibliographyStyle+".XSL").c_str(); root.append_attribute("StyleName")=m_impl->bibliographyStyle.c_str(); root.append_attribute("Version")="6";
+            const char* types[]={"Book","JournalArticle","ConferenceProceedings","Report","InternetSite","Misc"};
+            for(const auto& entry:m_impl->sources) {
+                const auto& s=entry.second; package.sourceTags.insert(s.tag); auto n=root.append_child("b:Source");
+                auto text=[&](const char* name,const std::string& value) {if(!value.empty())n.append_child(name).text().set(value.c_str());};
+                text("b:Tag",s.tag); text("b:SourceType",types[static_cast<int>(s.type)]); text("b:LCID",std::to_string(s.language));
+                if(!s.authors.empty()) { auto author=n.append_child("b:Author").append_child("b:Author"); bool corp=!s.authors.front().corporate.empty();
+                    if(corp) { if(s.authors.size()!=1)throw std::invalid_argument("A corporate source has one corporate author"); author.append_child("b:Corporate").text().set(s.authors.front().corporate.c_str()); }
+                    else { auto people=author.append_child("b:NameList"); for(const auto& a:s.authors) { if(!a.corporate.empty())throw std::invalid_argument("Cannot mix corporate and personal authors"); auto p=people.append_child("b:Person"); if(!a.last.empty())p.append_child("b:Last").text().set(a.last.c_str()); if(!a.first.empty())p.append_child("b:First").text().set(a.first.c_str()); if(!a.middle.empty())p.append_child("b:Middle").text().set(a.middle.c_str()); } }
+                }
+                text("b:Title",s.title); text("b:Year",s.year); text("b:Month",s.month); text("b:Day",s.day); text("b:Publisher",s.publisher); text("b:City",s.city); text("b:JournalName",s.journal); text("b:Volume",s.volume); text("b:Issue",s.issue); text("b:Pages",s.pages); text("b:URL",s.url); text("b:StandardNumber",s.doi); text("b:YearAccessed",s.accessedYear); text("b:MonthAccessed",s.accessedMonth); text("b:DayAccessed",s.accessedDay);
             }
-            cimg->rId = "rId_img_" + std::to_string(imgIndex + (++cellRidCounter));
+            std::string file="customXml/item1.xml"; int i=1; while(package.parts.count(file))file="customXml/item"+std::to_string(++i)+".xml";
+            package.addPart(file,xmlString(b),"application/xml"); package.relate("word/document.xml","../"+file,std::string(relNs())+"customXml");
+            auto itemProps="customXml/itemProps"+std::to_string(i)+".xml";
+            std::string props="<ds:datastoreItem ds:itemID=\"{A58B05B0-916A-47DB-BCE0-46F2E9A20A00}\" xmlns:ds=\"http://schemas.openxmlformats.org/officeDocument/2006/customXml\"><ds:schemaRefs><ds:schemaRef ds:uri=\"http://schemas.openxmlformats.org/officeDocument/2006/bibliography\"/></ds:schemaRefs></ds:datastoreItem>";
+            package.addPart(itemProps,props,"application/vnd.openxmlformats-officedocument.customXmlProperties+xml"); package.relate(file,"itemProps"+std::to_string(i)+".xml",std::string(relNs())+"customXmlProps");
         }
-
-        ZipWriter zip(filepath);
-
-        // Build document.xml
-        std::string docXml;
-        buildDocumentXml(docXml);
-
-        // Relationships
-        std::string relsXml = buildRelationshipsXml();
-
-        // Content Types
-        std::string contentTypesXml = buildContentTypesXml();
-
-        // .rels
-        std::string dotRels = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-            "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-            "<Relationship Id=\"rId1\" "
-            "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" "
-            "Target=\"word/document.xml\"/>"
-            "</Relationships>";
-
-        // Add entries to ZIP
-        zip.addEntry("[Content_Types].xml", contentTypesXml);
-        zip.addEntry("_rels/.rels", dotRels);
-        zip.addEntry("word/document.xml", docXml);
-        zip.addEntry("word/_rels/document.xml.rels", relsXml);
-        zip.addEntry("word/styles.xml", buildStylesXml());
-        zip.addEntry("word/numbering.xml", buildNumberingXml());
-        if (!m_impl->m_footnotes.empty())
-            zip.addEntry("word/footnotes.xml", buildFootnotesXml());
-
-        // Per-section headers and footers
-        for (size_t si = 0; si < m_impl->m_sections.size(); ++si) {
-            const auto& sec = m_impl->m_sections[si];
-            std::string partName = std::to_string(si + 1);
-            if (sec.header) {
-                std::string hdrXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-                    "<w:hdr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""
-                    " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\""
-                    " xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">"
-                    + sec.header->toXml() + "</w:hdr>";
-                zip.addEntry("word/header" + partName + ".xml", hdrXml);
-            }
-            if (sec.footer) {
-                std::string ftrXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-                    "<w:ftr xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\""
-                    " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\""
-                    " xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\">"
-                    + sec.footer->toXml() + "</w:ftr>";
-                zip.addEntry("word/footer" + partName + ".xml", ftrXml);
-            }
+        for(const auto& part:package.parts)if(part.first.find("customXml/")==0&&part.first.size()>4&&part.first.substr(part.first.size()-4)==".xml") {
+            pugi::xml_document sources; parseXml(sources,part.second);
+            for(auto tag:sources.select_nodes("//*[local-name()='Sources']/*[local-name()='Source']/*[local-name()='Tag']"))package.sourceTags.insert(tag.node().text().get());
         }
-
-        // Add document-level images
-        for (const auto& img : m_impl->m_images) {
-            if (img->skipped()) continue;
-            if (!zip.addFileEntry("word/" + img->mediaPath(), img->filepath())) {
-                return false;
-            }
-        }
-
-        // Add cell images from tables
-        for (auto* cimg : cellImages) {
-            if (cimg->skipped) continue;
-            namespace fs = std::filesystem;
-            std::string mediaPath = "media/" + fs::u8path(cimg->filepath).filename().u8string();
-            if (!zip.addFileEntry("word/" + mediaPath, cimg->filepath)) {
-                return false;
-            }
-        }
-
-        zip.finalize();
-        return true;
-    } catch (const std::exception&) {
-        return false;
-    }
+        package.process(); package.write(path); result.success=true;
+    } catch(const PackageError& e) {result.error={e.code,e.part,e.what()};}
+      catch(const std::invalid_argument& e) {result.error={SaveError::InvalidArgument,"",e.what()};}
+      catch(const std::exception& e) {result.error={SaveError::IoError,path,e.what()};}
+    result.warnings=std::move(package.warnings); return result;
 }
 
-// ================================================================
-//  Template engine helpers
-// ================================================================
-
+bool Document::open(const std::string& path) {
+    auto parts=readZip(path); if(!parts.count("word/document.xml")||!parts.count("[Content_Types].xml"))return false;
+    try { pugi::xml_document d; parseXml(d,parts.at("word/document.xml")); canonicalizeWordPrefixes(d.document_element()); if(!d.document_element().child("w:body"))return false; } catch(...) {return false;}
+    auto replacement=std::make_unique<Impl>(); replacement->templateParts.insert(parts.begin(),parts.end()); replacement->isTemplate=true;
+    m_impl=std::move(replacement); addSection(); return true;
+}
+Document& Document::set(const std::string& key,const std::string& value) { m_impl->vars[key]=value; return *this; }
+Document& Document::set(const std::string& key,double value,int precision) { if(precision<0||precision>17||!std::isfinite(value))throw std::invalid_argument("Invalid numeric template value"); std::ostringstream s; s<<std::fixed<<std::setprecision(precision)<<value; return set(key,s.str()); }
+Document& Document::set(const std::string& key,Paragraph p) { m_impl->block(key).append(std::move(p)); return *this; }
+Document& Document::set(const std::string& key,Table p) { m_impl->block(key).append(std::move(p)); return *this; }
+Document& Document::set(const std::string& key,Image p) { m_impl->block(key).append(std::move(p)); return *this; }
+Document& Document::set(const std::string& key,BulletList p) { m_impl->block(key).append(std::move(p)); return *this; }
+Document& Document::set(const std::string& key,Equation p) { m_impl->block(key).append(std::move(p)); return *this; }
+Paragraph& Document::setParagraph(const std::string& key,const std::string& s) { return m_impl->block(key).addParagraph(s); }
+Table& Document::setTable(const std::string& key,int r,int c) { return m_impl->block(key).addTable(r,c); }
+Image& Document::setImage(const std::string& key,const std::string& path) { return m_impl->block(key).addImage(path); }
+BulletList& Document::setBulletList(const std::string& key) { return m_impl->block(key).addBulletList(); }
+BulletList& Document::setOrderedList(const std::string& key) { return m_impl->block(key).addOrderedList(); }
+Equation& Document::setEquation(const std::string& key,const std::string& s) { return m_impl->block(key).addMath(s,EquationMode::Inline); }
+Equation& Document::setDisplayEquation(const std::string& key,const std::string& s) { return m_impl->block(key).addMath(s,EquationMode::Display); }
 namespace {
-
-// Trim whitespace from both ends.
-std::string trim(const std::string& s) {
-    size_t b = 0;
-    while (b < s.size() && (s[b] == ' ' || s[b] == '\t' || s[b] == '\r' || s[b] == '\n')) ++b;
-    size_t e = s.size();
-    while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\r' || s[e - 1] == '\n')) --e;
-    return s.substr(b, e - b);
-}
-
-struct Marker {
-    size_t pStart = 0;  // <w:p position in body
-    size_t pEnd = 0;    // position after </w:p>
-    std::string kind;   // "if", "else", "endif"
-    std::string key;    // for "if" only
-};
-
-// Find all template markers in body XML and return sorted by position.
-std::vector<Marker> findMarkers(const std::string& body) {
-    std::vector<Marker> out;
-    std::string patterns[] = {"{%if ", "{%else%}", "{%endif%}"};
-    std::string kinds[]   = {"if",     "else",   "endif"};
-
-    for (int pi = 0; pi < 3; ++pi) {
-        const auto& pat = patterns[pi];
-        const auto& kind = kinds[pi];
-
-        size_t pos = 0;
-        while ((pos = body.find(pat, pos)) != std::string::npos) {
-            // Locate enclosing <w:p> — search backwards for the last <w:p
-            // that is not a <w:pPr.
-            size_t search = pos;
-            size_t pStart = std::string::npos;
-            while (search > 0) {
-                pStart = body.rfind("<w:p", search);
-                if (pStart == std::string::npos) break;
-                // <w:p> / <w:p …> only — skip <w:pPr>, <w:pStyle>, …
-                char c = (pStart + 4 < body.size()) ? body[pStart + 4] : '\0';
-                if (c != '>' && c != ' ' && c != '/') {
-                    search = pStart - 1;
-                    continue;
-                }
-                break;
-            }
-            if (pStart == std::string::npos) { pos++; continue; }
-
-            size_t pEnd = body.find("</w:p>", pos);
-            if (pEnd == std::string::npos) { pos++; continue; }
-            pEnd += 6;
-
-            std::string key;
-            if (kind == "if") {
-                // {%if  KEY  %}   extract KEY, strip whitespace
-                size_t keyBeg = pos + pat.size();
-                size_t keyEnd = body.find("%}", keyBeg);
-                if (keyEnd != std::string::npos)
-                    key = trim(body.substr(keyBeg, keyEnd - keyBeg));
-            }
-
-            out.push_back({pStart, pEnd, kind, key});
-            pos = pEnd;
+std::string trim(std::string s) { auto first=s.find_first_not_of(" \t\r\n"); if(first==std::string::npos)return ""; return s.substr(first,s.find_last_not_of(" \t\r\n")-first+1); }
+void replaceTextNodes(pugi::xml_node p,const std::map<std::string,std::string>& vars) {
+    std::vector<pugi::xml_node> nodes; std::vector<size_t> offsets; std::string text;
+    for(auto item:p.select_nodes(".//w:t")) { nodes.push_back(item.node()); offsets.push_back(text.size()); text+=item.node().text().get(); }
+    struct Replacement { size_t begin,end; std::string value; }; std::vector<Replacement> replacements;
+    size_t start=0; while((start=text.find("${",start))!=std::string::npos) { auto end=text.find('}',start+2); if(end==std::string::npos)break; auto it=vars.find(text.substr(start+2,end-start-2)); if(it!=vars.end())replacements.push_back({start,end+1,it->second}); start=end+1; }
+    for(auto it=replacements.rbegin();it!=replacements.rend();++it) {
+        bool inserted=false;
+        for(size_t i=0;i<nodes.size();++i) {
+            size_t begin=offsets[i],end=begin+std::string(nodes[i].text().get()).size();
+            if(end<=it->begin||begin>=it->end)continue;
+            auto s=std::string(nodes[i].text().get()); size_t a=it->begin>begin?it->begin-begin:0,b=std::min(it->end-begin,s.size()); s.replace(a,b-a,inserted?"":it->value); inserted=true; nodes[i].text().set(s.c_str()); if(!nodes[i].attribute("xml:space"))nodes[i].append_attribute("xml:space")="preserve";
         }
     }
-
-    std::sort(out.begin(), out.end(),
-        [](const Marker& a, const Marker& b) { return a.pStart < b.pStart; });
-    return out;
 }
-
-bool isTruthy(const std::string& v) {
-    return !v.empty() && v != "false" && v != "0";
 }
-
-// Replace ${key} placeholders in a string.
-std::string replaceVars(const std::string& s,
-     const std::unordered_map<std::string, std::string>& vars)
-{
-    std::string r = s;
-    for (auto it = vars.begin(); it != vars.end(); ++it) {
-        std::string ph = "${" + it->first + "}";
-        size_t p = 0;
-        while ((p = r.find(ph, p)) != std::string::npos) {
-            r.replace(p, ph.size(), it->second);
-            p += it->second.size();
-        }
-    }
-    return r;
-}
-
-} // anonymous namespace
-
-// ================================================================
-//  Document template API
-// ================================================================
-
-bool Document::open(const std::string& filepath) {
-    auto parts = internal::readZip(filepath);
-    if (parts.empty()) return false;
-    m_impl->m_templateParts = std::move(parts);
-    m_impl->m_isTemplate = true;
-    m_impl->m_templateVars.clear();
-    m_impl->m_templateBlocks.clear();
-    m_impl->m_pendingMedia.clear();
-    m_impl->m_nextTplMedia = 1;
-    m_impl->m_nextTplListId = 101;
-    m_impl->m_tplNeedNumbering = false;
-    return true;
-}
-
-Document& Document::set(const std::string& key, const std::string& value) {
-    m_impl->m_templateVars[key] = value;
-    return *this;
-}
-
-Document& Document::set(const std::string& key, double v, int precision) {
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%.*f", precision, v);
-    return set(key, std::string(buf));
-}
-
-namespace {
-
-std::string drawingXml(const std::string& rId, int drawingId,
-                       int widthEmu, int heightEmu, Alignment align, bool hasAlign)
-{
-    std::string cx = std::to_string(widthEmu);
-    std::string cy = std::to_string(heightEmu);
-    std::string id = std::to_string(drawingId);
-    std::string xml;
-    xml += "<w:p>";
-    xml += "<w:pPr>";
-    if (hasAlign)
-        xml += "<w:jc w:val=\"" + alignmentToString(align) + "\"/>";
-    xml += "<w:ind w:firstLine=\"0\"/>";
-    xml += "</w:pPr>";
-    xml += "<w:r>"
-           "<w:drawing>"
-           "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
-           "<wp:extent cx=\"" + cx + "\" cy=\"" + cy + "\"/>"
-           "<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>"
-           "<wp:docPr id=\"" + id + "\" name=\"Picture " + id + "\"/>"
-           "<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" noChangeAspect=\"1\"/></wp:cNvGraphicFramePr>"
-           "<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">"
-           "<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
-           "<pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
-           "<pic:nvPicPr>"
-           "<pic:cNvPr id=\"" + id + "\" name=\"Picture " + id + "\"/>"
-           "<pic:cNvPicPr/>"
-           "</pic:nvPicPr>"
-           "<pic:blipFill>"
-           "<a:blip r:embed=\"" + rId + "\"/>"
-           "<a:stretch><a:fillRect/></a:stretch>"
-           "</pic:blipFill>"
-           "<pic:spPr>"
-           "<a:xfrm>"
-           "<a:off x=\"0\" y=\"0\"/>"
-           "<a:ext cx=\"" + cx + "\" cy=\"" + cy + "\"/>"
-           "</a:xfrm>"
-           "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
-           "</pic:spPr>"
-           "</pic:pic>"
-           "</a:graphicData>"
-           "</a:graphic>"
-           "</wp:inline>"
-           "</w:drawing>"
-           "</w:r>"
-           "</w:p>";
-    return xml;
-}
-
-std::string captionPara(const std::string& text) {
-    return "<w:p>"
-           "<w:pPr><w:spacing w:after=\"0\" w:before=\"0\"/>"
-           "<w:jc w:val=\"center\"/><w:ind w:firstLine=\"0\"/></w:pPr>"
-           "<w:r><w:rPr><w:b/></w:rPr>"
-           "<w:t xml:space=\"preserve\">" + xmlEscape(text) + "</w:t>"
-           "</w:r></w:p>";
-}
-
-void ensureDrawingNamespaces(std::string& xml) {
-    auto addNs = [&](const char* attr) {
-        if (xml.find(attr) != std::string::npos) return;
-        size_t tag = xml.find("<w:document");
-        if (tag == std::string::npos) return;
-        size_t gt = xml.find('>', tag);
-        if (gt == std::string::npos) return;
-        xml.insert(gt, std::string(" ") + attr);
-    };
-    addNs("xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\"");
-    addNs("xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"");
-    addNs("xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"");
-    addNs("xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"");
-    addNs("xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\"");
-}
-
-int parseContentWidthEmu(const std::string& docXml) {
-    // Default A4 portrait with 2.54 cm margins ≈ 6.5 in content width.
-    constexpr int kDefault = 9144000;
-    size_t pgSz = docXml.find("<w:pgSz");
-    size_t pgMar = docXml.find("<w:pgMar");
-    if (pgSz == std::string::npos || pgMar == std::string::npos) return kDefault;
-
-    auto attrInt = [](const std::string& tag, const char* name, int fallback) {
-        std::string needle = std::string(name) + "=\"";
-        size_t p = tag.find(needle);
-        if (p == std::string::npos) return fallback;
-        p += needle.size();
-        size_t e = tag.find('"', p);
-        if (e == std::string::npos) return fallback;
-        return std::atoi(tag.substr(p, e - p).c_str());
-    };
-
-    size_t pgSzEnd = docXml.find('>', pgSz);
-    size_t pgMarEnd = docXml.find('>', pgMar);
-    if (pgSzEnd == std::string::npos || pgMarEnd == std::string::npos) return kDefault;
-
-    std::string szTag = docXml.substr(pgSz, pgSzEnd - pgSz);
-    std::string marTag = docXml.substr(pgMar, pgMarEnd - pgMar);
-    int w = attrInt(szTag, "w:w", 11906);
-    int left = attrInt(marTag, "w:left", 1440);
-    int right = attrInt(marTag, "w:right", 1440);
-    int contentTwips = w - left - right;
-    if (contentTwips <= 0) return kDefault;
-    return contentTwips * 635; // twips → EMU
-}
-
-bool relsHasNumbering(const std::string& relsXml) {
-    return relsXml.find("/relationships/numbering") != std::string::npos;
-}
-
-std::string numberingStubXml() {
-    std::string xml;
-    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-          "<w:numbering xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
-          "</w:numbering>";
-    return xml;
-}
-
-std::string mergeNumberingXml(const std::string& existing, int nextTplListId) {
-    std::string xml = existing.empty() ? numberingStubXml() : existing;
-    size_t close = xml.rfind("</w:numbering>");
-    if (close == std::string::npos) return xml;
-
-    auto lvlBlock = [](const char* numFmt, const std::string& lvlText) {
-        std::string out;
-        for (int i = 0; i < 9; ++i) {
-            std::string text = lvlText;
-            if (text.find("%i") != std::string::npos)
-                text = "%" + std::to_string(i + 1) + ".";
-            out += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"" + std::to_string(i) + "\">"
-                   "<w:start w:val=\"1\"/>"
-                   "<w:numFmt w:val=\"" + std::string(numFmt) + "\"/>"
-                   "<w:lvlText w:val=\"" + text + "\"/>"
-                   "<w:lvlJc w:val=\"left\"/>"
-                   "<w:pPr>"
-                   "<w:tabs><w:tab w:val=\"num\" w:pos=\"" + std::to_string((i + 1) * 420) + "\"/></w:tabs>"
-                   "<w:ind w:left=\"" + std::to_string((i + 1) * 420) + "\" w:hanging=\"420\"/>"
-                   "</w:pPr>"
-                   "<w:rPr><w:rFonts w:hint=\"default\"/></w:rPr>"
-                   "</w:lvl>";
-        }
-        return out;
-    };
-
-    std::string extra;
-    if (xml.find("w:abstractNumId=\"9000\"") == std::string::npos) {
-        extra += "<w:abstractNum w:abstractNumId=\"9000\">"
-                 "<w:multiLevelType w:val=\"hybridMultilevel\"/>"
-                 + lvlBlock("bullet", "\xC2\xB7") +
-                 "</w:abstractNum>";
-        extra += "<w:abstractNum w:abstractNumId=\"9001\">"
-                 "<w:multiLevelType w:val=\"hybridMultilevel\"/>"
-                 + lvlBlock("decimal", "%i") +
-                 "</w:abstractNum>";
-    }
-    if (xml.find("w:numId=\"100\"") == std::string::npos) {
-        extra += "<w:num w:numId=\"100\"><w:abstractNumId w:val=\"9000\"/></w:num>";
-    }
-    for (int id = 101; id < nextTplListId; ++id) {
-        std::string needle = "w:numId=\"" + std::to_string(id) + "\"";
-        if (xml.find(needle) == std::string::npos) {
-            extra += "<w:num w:numId=\"" + std::to_string(id) + "\">"
-                     "<w:abstractNumId w:val=\"9001\"/>"
-                     "<w:lvlOverride w:ilvl=\"0\">"
-                     "<w:startOverride w:val=\"1\"/>"
-                     "</w:lvlOverride>"
-                     "</w:num>";
-        }
-    }
-    xml.insert(close, extra);
-    return xml;
-}
-
-std::string patchRels(const std::string& relsXml,
-                      const std::vector<PendingMedia>& media,
-                      bool addNumbering)
-{
-    std::string xml = relsXml;
-    if (xml.empty()) {
-        xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-              "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-              "</Relationships>";
-    }
-    size_t close = xml.rfind("</Relationships>");
-    if (close == std::string::npos) return xml;
-
-    std::string extra;
-    for (const auto& m : media) {
-        extra += "<Relationship Id=\"" + m.rId + "\" "
-                 "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" "
-                 "Target=\"" + xmlEscape(m.relTarget) + "\"/>";
-    }
-    if (addNumbering && !relsHasNumbering(xml)) {
-        extra += "<Relationship Id=\"rIdXwordNum\" "
-                 "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering\" "
-                 "Target=\"numbering.xml\"/>";
-    }
-    xml.insert(close, extra);
-    return xml;
-}
-
-std::string patchContentTypes(const std::string& ctXml,
-                              const std::vector<PendingMedia>& media,
-                              bool addNumbering)
-{
-    std::string xml = ctXml;
-    if (xml.empty()) return xml;
-    size_t close = xml.rfind("</Types>");
-    if (close == std::string::npos) return xml;
-
-    std::string extra;
-    if (addNumbering && xml.find("/word/numbering.xml") == std::string::npos) {
-        extra += "<Override PartName=\"/word/numbering.xml\" "
-                 "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml\"/>";
-    }
-    for (const auto& m : media) {
-        extra += "<Override PartName=\"/word/" + m.relTarget + "\" "
-                 "ContentType=\"" + m.contentType + "\"/>";
-    }
-    xml.insert(close, extra);
-    return xml;
-}
-
-} // anonymous namespace
-
-Document& Document::set(const std::string& key, Paragraph para) {
-    auto p = std::make_unique<Paragraph>(std::move(para));
-    TemplateBlock b;
-    b.type = ElementType::Paragraph;
-    b.paragraph = p.get();
-    m_impl->m_paragraphs.push_back(std::move(p));
-    m_impl->m_templateBlocks[key].push_back(b);
-    return *this;
-}
-
-Document& Document::set(const std::string& key, Table table) {
-    auto t = std::make_unique<Table>(std::move(table));
-    TemplateBlock b;
-    b.type = ElementType::Table;
-    b.table = t.get();
-    m_impl->m_tables.push_back(std::move(t));
-    m_impl->m_templateBlocks[key].push_back(b);
-    return *this;
-}
-
-Document& Document::set(const std::string& key, Image image) {
-    auto img = std::make_unique<Image>(std::move(image));
-    namespace fs = std::filesystem;
-    std::string filename = fs::u8path(img->filepath()).filename().u8string();
-    if (!isAsciiSafePartName(filename)) {
-        std::string ext = fs::u8path(img->filepath()).extension().u8string();
-        if (!isAsciiSafePartName(ext)) ext.clear();
-        img->setMediaName("image" + std::to_string(m_impl->m_images.size() + 1) + ext);
-    }
-    TemplateBlock b;
-    b.type = ElementType::Image;
-    b.image = img.get();
-    m_impl->m_images.push_back(std::move(img));
-    m_impl->m_templateBlocks[key].push_back(b);
-    return *this;
-}
-
-Document& Document::set(const std::string& key, BulletList list) {
-    auto lst = std::make_unique<BulletList>(std::move(list));
-    if (lst->numId() <= 0) {
-        if (lst->type() == ListType::Bullet)
-            lst->setNumId(100);
-        else
-            lst->setNumId(m_impl->m_nextTplListId++);
-    }
-    m_impl->m_tplNeedNumbering = true;
-    TemplateBlock b;
-    b.type = ElementType::BulletList;
-    b.bulletList = lst.get();
-    m_impl->m_lists.push_back(std::move(lst));
-    m_impl->m_templateBlocks[key].push_back(b);
-    return *this;
-}
-
-Document& Document::set(const std::string& key, Equation eq) {
-    auto e = std::make_unique<Equation>(std::move(eq));
-    TemplateBlock b;
-    b.type = ElementType::Equation;
-    b.equation = e.get();
-    m_impl->m_equations.push_back(std::move(e));
-    m_impl->m_templateBlocks[key].push_back(b);
-    return *this;
-}
-
-Paragraph& Document::setParagraph(const std::string& key, const std::string& text) {
-    auto p = std::make_unique<Paragraph>();
-    if (m_impl->m_bodyRunStyle.hasFormatting())
-        p->setStyle(m_impl->m_bodyRunStyle);
-    if (!text.empty())
-        p->addRun(text);
-    if (m_impl->m_defaultIndent > 0)
-        p->setFirstLineIndent(m_impl->m_defaultIndent);
-    Paragraph* ptr = p.get();
-    m_impl->m_paragraphs.push_back(std::move(p));
-    TemplateBlock b;
-    b.type = ElementType::Paragraph;
-    b.paragraph = ptr;
-    m_impl->m_templateBlocks[key].push_back(b);
-    return *ptr;
-}
-
-Table& Document::setTable(const std::string& key, int rows, int cols) {
-    auto tbl = std::make_unique<Table>(rows, cols);
-    Table* ptr = tbl.get();
-    if (m_impl->m_tableRunStyle.hasFormatting())
-        ptr->setStyle(m_impl->m_tableRunStyle);
-    m_impl->m_tables.push_back(std::move(tbl));
-    TemplateBlock b;
-    b.type = ElementType::Table;
-    b.table = ptr;
-    m_impl->m_templateBlocks[key].push_back(b);
-    return *ptr;
-}
-
-Image& Document::setImage(const std::string& key, const std::string& filepath) {
-    Image img(filepath);
-    set(key, std::move(img));
-    return *m_impl->m_templateBlocks[key].back().image;
-}
-
-BulletList& Document::setBulletList(const std::string& key) {
-    auto lst = std::make_unique<BulletList>(ListType::Bullet);
-    lst->setNumId(100);
-    m_impl->m_tplNeedNumbering = true;
-    BulletList* ptr = lst.get();
-    m_impl->m_lists.push_back(std::move(lst));
-    TemplateBlock b;
-    b.type = ElementType::BulletList;
-    b.bulletList = ptr;
-    m_impl->m_templateBlocks[key].push_back(b);
-    return *ptr;
-}
-
-BulletList& Document::setOrderedList(const std::string& key) {
-    auto lst = std::make_unique<BulletList>(ListType::Ordered);
-    lst->setNumId(m_impl->m_nextTplListId++);
-    m_impl->m_tplNeedNumbering = true;
-    BulletList* ptr = lst.get();
-    m_impl->m_lists.push_back(std::move(lst));
-    TemplateBlock b;
-    b.type = ElementType::BulletList;
-    b.bulletList = ptr;
-    m_impl->m_templateBlocks[key].push_back(b);
-    return *ptr;
-}
-
-Equation& Document::setEquation(const std::string& key, const std::string& latex) {
-    auto eq = std::make_unique<Equation>(latex, EquationMode::Inline);
-    if (m_impl->m_bodyRunStyle.hasFormatting())
-        eq->setStyle(m_impl->m_bodyRunStyle);
-    Equation* ptr = eq.get();
-    m_impl->m_equations.push_back(std::move(eq));
-    TemplateBlock b;
-    b.type = ElementType::Equation;
-    b.equation = ptr;
-    m_impl->m_templateBlocks[key].push_back(b);
-    return *ptr;
-}
-
-Equation& Document::setDisplayEquation(const std::string& key, const std::string& latex) {
-    auto eq = std::make_unique<Equation>(latex, EquationMode::Display);
-    if (m_impl->m_displayEquationStyle.hasFormatting())
-        eq->setStyle(m_impl->m_displayEquationStyle);
-    else if (m_impl->m_bodyRunStyle.hasFormatting())
-        eq->setStyle(m_impl->m_bodyRunStyle);
-    Equation* ptr = eq.get();
-    m_impl->m_equations.push_back(std::move(eq));
-    TemplateBlock b;
-    b.type = ElementType::Equation;
-    b.equation = ptr;
-    m_impl->m_templateBlocks[key].push_back(b);
-    return *ptr;
-}
-
-std::string Document::renderBlockXml(const std::string& key, int& drawingId, int maxWidthEmu) {
-    auto it = m_impl->m_templateBlocks.find(key);
-    if (it == m_impl->m_templateBlocks.end()) return {};
-
-    namespace fs = std::filesystem;
-    auto probe = [](const std::string& p) {
-        if (p.empty()) return false;
-        std::error_code ec;
-        return fs::is_regular_file(fs::u8path(p), ec);
-    };
-    auto registerMedia = [&](const std::string& srcPath, const std::string& extHint) -> std::string {
-        std::string rId = "rIdXword" + std::to_string(m_impl->m_nextTplMedia);
-        std::string ext = extHint;
-        if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
-        if (ext.empty()) ext = "png";
-        std::string mediaName = "xword_" + std::to_string(m_impl->m_nextTplMedia) + "." + ext;
-        ++m_impl->m_nextTplMedia;
-        PendingMedia pm;
-        pm.rId = rId;
-        pm.relTarget = "media/" + mediaName;
-        pm.srcPath = srcPath;
-        pm.contentType = imageContentType(ext);
-        m_impl->m_pendingMedia.push_back(pm);
-        return rId;
-    };
-
-    std::string xml;
-    for (const auto& b : it->second) {
-        switch (b.type) {
-            case ElementType::Paragraph:
-                xml += b.paragraph->toXml();
-                break;
-            case ElementType::Table: {
-                Table* tbl = b.table;
-                if (!tbl->caption().empty())
-                    xml += captionPara(tbl->caption());
-                std::vector<CellImage*> cellImages;
-                tbl->collectCellImages(cellImages);
-                for (auto* cimg : cellImages) {
-                    if (!probe(cimg->filepath)) {
-                        cimg->skipped = true;
-                        cimg->rId.clear();
-                        std::cerr << "[xword] warning: skipping missing image '"
-                                  << cimg->filepath << "'\n";
-                        continue;
-                    }
-                    std::string ext = fs::u8path(cimg->filepath).extension().u8string();
-                    cimg->rId = registerMedia(cimg->filepath, ext);
-                }
-                xml += tbl->toXml();
-                break;
-            }
-            case ElementType::Image: {
-                Image* img = b.image;
-                if (!probe(img->filepath())) {
-                    img->setSkipped(true);
-                    std::cerr << "[xword] warning: skipping missing image '"
-                              << img->filepath() << "'\n";
-                    break;
-                }
-                std::string ext = fs::u8path(img->filepath()).extension().u8string();
-                std::string rId = registerMedia(img->filepath(), ext);
-                img->setRId(rId);
-                auto sz = computeImageSize(img->filepath(), img->width(), img->height(), maxWidthEmu);
-                xml += drawingXml(rId, ++drawingId, sz.widthEmu, sz.heightEmu,
-                                  img->alignment(), img->hasAlignment());
-                if (!img->caption().empty())
-                    xml += captionPara(img->caption());
-                break;
-            }
-            case ElementType::BulletList:
-                xml += b.bulletList->toXml();
-                break;
-            case ElementType::Equation: {
-                Equation* eq = b.equation;
-                if (eq->mode() == EquationMode::Display)
-                    xml += "<w:p>" + eq->toXml() + "</w:p>";
-                else
-                    xml += "<w:p><w:r>" + eq->toXml() + "</w:r></w:p>";
-                break;
-            }
-            default:
-                break;
-        }
-    }
-    return xml;
-}
-
 std::string Document::renderXml(const std::string& xml) {
-    // Locate <w:body> … </w:body>
-    size_t bodyTag = xml.find("<w:body>");
-    size_t bodyEnd = xml.find("</w:body>");
-    if (bodyTag == std::string::npos || bodyEnd == std::string::npos)
-        return replaceVars(xml, m_impl->m_templateVars); // simple fallback for headers
-
-    std::string prefix = xml.substr(0, bodyTag + 9);
-    std::string body   = xml.substr(bodyTag + 9, bodyEnd - (bodyTag + 9));
-    std::string suffix = xml.substr(bodyEnd);
-
-    auto condTruthy = [&](const std::string& key) -> bool {
-        if (m_impl->m_templateBlocks.count(key) && !m_impl->m_templateBlocks[key].empty())
-            return true;
-        return isTruthy(
-            m_impl->m_templateVars.count(key) ? m_impl->m_templateVars.at(key) : "");
+    if(xml.find('$')==std::string::npos&&xml.find('{')==std::string::npos)return xml;
+    pugi::xml_document d; parseXml(d,xml); auto root=d.document_element(); canonicalizeWordPrefixes(root);
+    if(!root.attribute("xmlns:xw"))root.append_attribute("xmlns:xw")="urn:xword:internal";
+    // Conditional blocks are sibling blocks. Nested conditions are rejected explicitly.
+    std::function<void(pugi::xml_node)> conditions=[&](pugi::xml_node parent) {
+        bool active=false,truth=false,inElse=false;
+        for(auto n=parent.first_child();n;) {
+            auto next=n.next_sibling(); std::string t=std::string(n.name())=="w:p"?trim(textContent(n)):"";
+            if(t.find("{%if ")==0&&t.size()>8&&t.substr(t.size()-2)=="%}") {
+                if(active)throw std::invalid_argument("Nested template conditions are unsupported"); auto key=trim(t.substr(5,t.size()-7)); auto it=m_impl->vars.find(key); truth=m_impl->blocks.count(key)&&!m_impl->blocks.at(key)->empty(); if(it!=m_impl->vars.end())truth=truth||(!it->second.empty()&&it->second!="0"&&it->second!="false"); active=true; inElse=false; parent.remove_child(n);
+            } else if(t=="{%else%}") { if(!active||inElse)throw std::invalid_argument("Unmatched template else"); inElse=true; parent.remove_child(n); }
+            else if(t=="{%endif%}") { if(!active)throw std::invalid_argument("Unmatched template endif"); active=false; parent.remove_child(n); }
+            else if(active&&!(inElse?!truth:truth))parent.remove_child(n);
+            else conditions(n);
+            n=next;
+        }
+        if(active)throw std::invalid_argument("Unclosed template condition");
     };
-
-    // 1. Process conditionals
-    auto markers = findMarkers(body);
-
-    std::string bodyOut;
-    size_t pos = 0;
-    enum { Normal, IfTrue, IfFalse } state = Normal;
-
-    for (const auto& m : markers) {
-        // Emit content between previous position and this marker
-        if (state != IfFalse)
-            bodyOut += body.substr(pos, m.pStart - pos);
-
-        if (m.kind == "if") {
-            if (state != Normal)
-                throw std::runtime_error("nested {%if%} is not supported");
-            state = condTruthy(m.key) ? IfTrue : IfFalse;
-        } else if (m.kind == "else") {
-            if (state == Normal)
-                throw std::runtime_error("{%else%} without {%if%}");
-            state = (state == IfTrue) ? IfFalse : IfTrue;
-        } else { // endif
-            if (state == Normal)
-                throw std::runtime_error("{%endif%} without {%if%}");
-            state = Normal;
+    conditions(root);
+    auto paragraphs=root.select_nodes(".//w:p");
+    for(auto item:paragraphs) {
+        auto p=item.node(); std::string text=textContent(p),t=trim(text); bool block=false;
+        for(const auto& entry:m_impl->blocks) {
+            std::string token="${"+entry.first+"}"; if(text.find(token)==std::string::npos)continue;
+            if(t!=token)throw std::invalid_argument("Block placeholder must occupy an entire paragraph: "+entry.first);
+            auto parent=p.parent(); pugi::xml_document fragment; parseXml(fragment,documentXml("xw:root",entry.second->toXml()));
+            for(auto n:fragment.document_element().children())parent.insert_copy_before(n,p);
+            auto sect=p.child("w:pPr").child("w:sectPr");
+            if(sect) { auto carry=parent.insert_child_before("w:p",p); carry.append_child("w:pPr").append_copy(sect); }
+            parent.remove_child(p); block=true; break;
         }
-        pos = m.pEnd;
+        if(!block)replaceTextNodes(p,m_impl->vars);
     }
-
-    if (state != Normal)
-        throw std::runtime_error("unclosed {%if%} block");
-
-    if (state != IfFalse)
-        bodyOut += body.substr(pos);
-
-    // 2. Replace block ${key} placeholders (whole enclosing paragraph).
-    int drawingId = 1000;
-    int maxWidthEmu = parseContentWidthEmu(xml);
-    for (auto it = m_impl->m_templateBlocks.begin(); it != m_impl->m_templateBlocks.end(); ++it) {
-        const std::string& key = it->first;
-        std::string ph = "${" + key + "}";
-        size_t p = 0;
-        std::string blockXml;
-        bool rendered = false;
-        while ((p = bodyOut.find(ph, p)) != std::string::npos) {
-            size_t search = p;
-            size_t pStart = std::string::npos;
-            while (search > 0) {
-                pStart = bodyOut.rfind("<w:p", search);
-                if (pStart == std::string::npos) break;
-                char c = (pStart + 4 < bodyOut.size()) ? bodyOut[pStart + 4] : '\0';
-                if (c != '>' && c != ' ' && c != '/') {
-                    search = pStart - 1;
-                    continue;
-                }
-                break;
-            }
-            size_t pEnd = bodyOut.find("</w:p>", p);
-            if (pStart == std::string::npos || pEnd == std::string::npos) {
-                ++p;
-                continue;
-            }
-            pEnd += 6;
-            if (!rendered) {
-                blockXml = renderBlockXml(key, drawingId, maxWidthEmu);
-                rendered = true;
-            }
-            bodyOut.replace(pStart, pEnd - pStart, blockXml);
-            p = pStart + blockXml.size();
-        }
-    }
-
-    // 3. Replace remaining scalar ${key} variables in-text.
-    bodyOut = replaceVars(bodyOut, m_impl->m_templateVars);
-
-    return prefix + bodyOut + suffix;
+    return xmlString(d);
 }
-
-bool Document::saveTemplate(const std::string& filepath) {
-    try {
-        m_impl->m_pendingMedia.clear();
-        m_impl->m_nextTplMedia = 1;
-
-        ZipWriter zip(filepath);
-
-        std::string docXml;
-        if (m_impl->m_templateParts.count("word/document.xml")) {
-            docXml = m_impl->m_templateParts["word/document.xml"];
-            docXml = renderXml(docXml);
-            if (!m_impl->m_templateBlocks.empty() || !m_impl->m_pendingMedia.empty())
-                ensureDrawingNamespaces(docXml);
-        }
-
-        const std::string relsName = "word/_rels/document.xml.rels";
-        const std::string ctName = "[Content_Types].xml";
-        std::string relsXml = m_impl->m_templateParts.count(relsName)
-            ? m_impl->m_templateParts[relsName] : std::string();
-        std::string ctXml = m_impl->m_templateParts.count(ctName)
-            ? m_impl->m_templateParts[ctName] : std::string();
-
-        const bool needNumbering = m_impl->m_tplNeedNumbering;
-        const bool addNumberingRel = needNumbering && !relsHasNumbering(relsXml);
-        relsXml = patchRels(relsXml, m_impl->m_pendingMedia, addNumberingRel);
-        ctXml = patchContentTypes(ctXml, m_impl->m_pendingMedia, addNumberingRel);
-
-        std::string numberingXml;
-        if (needNumbering) {
-            std::string existing = m_impl->m_templateParts.count("word/numbering.xml")
-                ? m_impl->m_templateParts["word/numbering.xml"] : std::string();
-            numberingXml = mergeNumberingXml(existing, m_impl->m_nextTplListId);
-        }
-
-        bool wroteDoc = false, wroteRels = false, wroteCt = false, wroteNum = false;
-        for (auto it = m_impl->m_templateParts.begin(); it != m_impl->m_templateParts.end(); ++it) {
-            const std::string& name = it->first;
-            std::string& data = it->second;
-            if (name == "word/document.xml") {
-                zip.addEntry(name, docXml);
-                wroteDoc = true;
-            } else if (name == relsName) {
-                zip.addEntry(name, relsXml);
-                wroteRels = true;
-            } else if (name == ctName) {
-                zip.addEntry(name, ctXml);
-                wroteCt = true;
-            } else if (name == "word/numbering.xml") {
-                zip.addEntry(name, needNumbering ? numberingXml : data);
-                wroteNum = true;
-            } else if (name.size() > 15 && name.substr(0, 12) == "word/header"
-                       && name.substr(name.size() - 4) == ".xml") {
-                zip.addEntry(name, renderXml(data));
-            } else if (name.size() > 15 && name.substr(0, 12) == "word/footer"
-                       && name.substr(name.size() - 4) == ".xml") {
-                zip.addEntry(name, renderXml(data));
-            } else {
-                zip.addEntry(name, data);
-            }
-        }
-        if (!wroteDoc && !docXml.empty())
-            zip.addEntry("word/document.xml", docXml);
-        if (!wroteRels)
-            zip.addEntry(relsName, relsXml);
-        if (!wroteCt)
-            zip.addEntry(ctName, ctXml);
-        if (needNumbering && !wroteNum)
-            zip.addEntry("word/numbering.xml", numberingXml);
-
-        for (const auto& m : m_impl->m_pendingMedia) {
-            if (!zip.addFileEntry("word/" + m.relTarget, m.srcPath))
-                return false;
-        }
-
-        zip.finalize();
-        return true;
-    } catch (const std::exception&) {
-        return false;
-    }
-}
-
 } // namespace xword

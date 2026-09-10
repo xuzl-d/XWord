@@ -1,90 +1,287 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include "xword/xword.hpp"
-
 namespace py = pybind11;
 using namespace xword;
-
 PYBIND11_MODULE(_native, m) {
-    m.doc() = "XWord .docx document generator (native C++ backend)";
-
-    // ═══════════════════════════════════════════════════════════
-    //  Enums
-    // ═══════════════════════════════════════════════════════════
-
-    py::enum_<Alignment>(m, "Alignment")
-        .value("LEFT", Alignment::Left)
-        .value("CENTER", Alignment::Center)
-        .value("RIGHT", Alignment::Right)
-        .value("JUSTIFY", Alignment::Justify);
-
-    py::enum_<TableStyle>(m, "TableStyle")
-        .value("NONE", TableStyle::None)
-        .value("GRID", TableStyle::Grid)
-        .value("LIGHT", TableStyle::Light);
-
-    py::enum_<PageSize>(m, "PageSize")
-        .value("A4", PageSize::A4)
-        .value("LETTER", PageSize::Letter);
-
-    py::enum_<Orientation>(m, "Orientation")
-        .value("PORTRAIT", Orientation::Portrait)
-        .value("LANDSCAPE", Orientation::Landscape);
-
-    py::enum_<ListType>(m, "ListType")
-        .value("BULLET", ListType::Bullet)
-        .value("ORDERED", ListType::Ordered);
-
-    py::enum_<HeadingNumFormat>(m, "HeadingNumFormat")
-        .value("DECIMAL", HeadingNumFormat::Decimal)
-        .value("CHAPTER", HeadingNumFormat::Chapter);
-
-    py::enum_<EquationMode>(m, "EquationMode")
-        .value("INLINE", EquationMode::Inline)
-        .value("DISPLAY", EquationMode::Display);
-
-    py::enum_<CaptionNumStyle>(m, "CaptionNumStyle")
-        .value("SEQUENTIAL", CaptionNumStyle::Sequential)
-        .value("BY_CHAPTER", CaptionNumStyle::ByChapter);
-
-    py::enum_<SectionBreakType>(m, "SectionBreakType")
-        .value("NEXT_PAGE", SectionBreakType::NextPage)
-        .value("CONTINUOUS", SectionBreakType::Continuous)
-        .value("EVEN_PAGE", SectionBreakType::EvenPage)
-        .value("ODD_PAGE", SectionBreakType::OddPage);
-
-    // ═══════════════════════════════════════════════════════════
-    //  Value types
-    // ═══════════════════════════════════════════════════════════
-
+    m.doc() = "XWord 2.0 OOXML document generator";
+    m.attr("__version__") = "2.0.0";
+    py::enum_<Alignment>(m,"Alignment")
+        .value("Left",Alignment::Left)
+        .value("Center",Alignment::Center)
+        .value("Right",Alignment::Right)
+        .value("Justify",Alignment::Justify)
+        ;
+    py::enum_<VAlignment>(m,"VAlignment")
+        .value("Top",VAlignment::Top)
+        .value("Center",VAlignment::Center)
+        .value("Bottom",VAlignment::Bottom)
+        ;
+    py::enum_<TableStyle>(m,"TableStyle")
+        .value("None",TableStyle::None)
+        .value("Grid",TableStyle::Grid)
+        .value("Light",TableStyle::Light)
+        ;
+    py::enum_<PageSize>(m,"PageSize")
+        .value("A4",PageSize::A4)
+        .value("Letter",PageSize::Letter)
+        ;
+    py::enum_<Orientation>(m,"Orientation")
+        .value("Portrait",Orientation::Portrait)
+        .value("Landscape",Orientation::Landscape)
+        ;
+    py::enum_<ListType>(m,"ListType")
+        .value("Bullet",ListType::Bullet)
+        .value("Ordered",ListType::Ordered)
+        ;
+    py::enum_<HeadingNumFormat>(m,"HeadingNumFormat")
+        .value("Decimal",HeadingNumFormat::Decimal)
+        .value("Chapter",HeadingNumFormat::Chapter)
+        ;
+    py::enum_<EquationMode>(m,"EquationMode")
+        .value("Inline",EquationMode::Inline)
+        .value("Display",EquationMode::Display)
+        ;
+    py::enum_<CaptionNumStyle>(m,"CaptionNumStyle")
+        .value("Sequential",CaptionNumStyle::Sequential)
+        .value("ByChapter",CaptionNumStyle::ByChapter)
+        ;
+    py::enum_<SectionBreakType>(m,"SectionBreakType")
+        .value("NextPage",SectionBreakType::NextPage)
+        .value("Continuous",SectionBreakType::Continuous)
+        .value("EvenPage",SectionBreakType::EvenPage)
+        .value("OddPage",SectionBreakType::OddPage)
+        .value("NextColumn",SectionBreakType::NextColumn)
+        ;
+    py::enum_<Toggle>(m,"Toggle")
+        .value("Inherit",Toggle::Inherit)
+        .value("Off",Toggle::Off)
+        .value("On",Toggle::On)
+        ;
+    py::enum_<BreakType>(m,"BreakType")
+        .value("Line",BreakType::Line)
+        .value("Page",BreakType::Page)
+        .value("Column",BreakType::Column)
+        ;
+    py::enum_<HeaderFooterType>(m,"HeaderFooterType")
+        .value("Default",HeaderFooterType::Default)
+        .value("First",HeaderFooterType::First)
+        .value("Even",HeaderFooterType::Even)
+        ;
+    py::enum_<NumberFormat>(m,"NumberFormat")
+        .value("Decimal",NumberFormat::Decimal)
+        .value("UpperRoman",NumberFormat::UpperRoman)
+        .value("LowerRoman",NumberFormat::LowerRoman)
+        .value("UpperLetter",NumberFormat::UpperLetter)
+        .value("LowerLetter",NumberFormat::LowerLetter)
+        .value("Bullet",NumberFormat::Bullet)
+        ;
+    py::enum_<NoteRestart>(m,"NoteRestart")
+        .value("Continuous",NoteRestart::Continuous)
+        .value("EachSection",NoteRestart::EachSection)
+        .value("EachPage",NoteRestart::EachPage)
+        ;
+    py::enum_<FootnotePosition>(m,"FootnotePosition")
+        .value("PageBottom",FootnotePosition::PageBottom)
+        .value("BeneathText",FootnotePosition::BeneathText)
+        ;
+    py::enum_<EndnotePosition>(m,"EndnotePosition")
+        .value("DocumentEnd",EndnotePosition::DocumentEnd)
+        .value("SectionEnd",EndnotePosition::SectionEnd)
+        ;
+    py::enum_<ReferenceKind>(m,"ReferenceKind")
+        .value("Text",ReferenceKind::Text)
+        .value("Number",ReferenceKind::Number)
+        .value("Page",ReferenceKind::Page)
+        ;
+    py::enum_<TargetKind>(m,"TargetKind")
+        .value("Bookmark",TargetKind::Bookmark)
+        .value("Paragraph",TargetKind::Paragraph)
+        .value("Heading",TargetKind::Heading)
+        .value("Figure",TargetKind::Figure)
+        .value("Table",TargetKind::Table)
+        ;
+    py::enum_<LineRule>(m,"LineRule")
+        .value("Auto",LineRule::Auto)
+        .value("Exact",LineRule::Exact)
+        .value("AtLeast",LineRule::AtLeast)
+        ;
+    py::enum_<TabAlignment>(m,"TabAlignment")
+        .value("Left",TabAlignment::Left)
+        .value("Center",TabAlignment::Center)
+        .value("Right",TabAlignment::Right)
+        .value("Decimal",TabAlignment::Decimal)
+        .value("Bar",TabAlignment::Bar)
+        ;
+    py::enum_<TabLeader>(m,"TabLeader")
+        .value("None",TabLeader::None)
+        .value("Dot",TabLeader::Dot)
+        .value("Hyphen",TabLeader::Hyphen)
+        .value("Underscore",TabLeader::Underscore)
+        ;
+    py::enum_<ImageWrap>(m,"ImageWrap")
+        .value("Inline",ImageWrap::Inline)
+        .value("Square",ImageWrap::Square)
+        .value("TopBottom",ImageWrap::TopBottom)
+        .value("BehindText",ImageWrap::BehindText)
+        .value("InFrontOfText",ImageWrap::InFrontOfText)
+        ;
+    py::enum_<PositionRelative>(m,"PositionRelative")
+        .value("Page",PositionRelative::Page)
+        .value("Margin",PositionRelative::Margin)
+        .value("Column",PositionRelative::Column)
+        .value("Paragraph",PositionRelative::Paragraph)
+        ;
+    py::enum_<SourceType>(m,"SourceType")
+        .value("Book",SourceType::Book)
+        .value("JournalArticle",SourceType::JournalArticle)
+        .value("ConferenceProceedings",SourceType::ConferenceProceedings)
+        .value("Report",SourceType::Report)
+        .value("InternetSite",SourceType::InternetSite)
+        .value("Misc",SourceType::Misc)
+        ;
+    py::enum_<PropertyType>(m,"PropertyType")
+        .value("String",PropertyType::String)
+        .value("Number",PropertyType::Number)
+        .value("Boolean",PropertyType::Boolean)
+        .value("Date",PropertyType::Date)
+        ;
+    py::enum_<SaveError>(m,"SaveError")
+        .value("None",SaveError::None)
+        .value("InvalidArgument",SaveError::InvalidArgument)
+        .value("InvalidXml",SaveError::InvalidXml)
+        .value("InvalidReference",SaveError::InvalidReference)
+        .value("MissingResource",SaveError::MissingResource)
+        .value("IoError",SaveError::IoError)
+        ;
+    py::class_<Length>(m, "Length")
+        .def(py::init<>())
+        .def_static("pt", &Length::pt)
+        .def_static("cm", &Length::cm)
+        .def_static("mm", &Length::mm)
+        .def_static("inch", &Length::inch)
+        .def_static("twips", &Length::twips)
+        .def("dxa", &Length::dxa, py::return_value_policy::reference_internal)
+        .def("emu", &Length::emu, py::return_value_policy::reference_internal)
+        ;
+    py::class_<TargetId>(m, "TargetId")
+        .def(py::init<const std::string&,TargetKind>(),py::arg("name")="",py::arg("kind")=TargetKind::Bookmark)
+        .def_readwrite("name", &TargetId::name)
+        .def_readwrite("kind", &TargetId::kind)
+        ;
     py::class_<PageMargins>(m, "PageMargins")
         .def(py::init<>())
         .def_readwrite("top", &PageMargins::top)
         .def_readwrite("bottom", &PageMargins::bottom)
         .def_readwrite("left", &PageMargins::left)
-        .def_readwrite("right", &PageMargins::right);
-
+        .def_readwrite("right", &PageMargins::right)
+        ;
+    py::class_<Diagnostic>(m, "Diagnostic")
+        .def(py::init<>())
+        .def_readwrite("code", &Diagnostic::code)
+        .def_readwrite("part", &Diagnostic::part)
+        .def_readwrite("message", &Diagnostic::message)
+        ;
+    py::class_<SaveOptions>(m, "SaveOptions")
+        .def(py::init<>())
+        .def_readwrite("missing_images_are_errors", &SaveOptions::missingImagesAreErrors)
+        ;
+    py::class_<SaveResult>(m, "SaveResult")
+        .def(py::init<>())
+        .def_readwrite("success", &SaveResult::success)
+        .def_readwrite("error", &SaveResult::error)
+        .def_readwrite("warnings", &SaveResult::warnings)
+        ;
+    py::class_<NoteOptions>(m, "NoteOptions")
+        .def(py::init<>())
+        .def_readwrite("format", &NoteOptions::format)
+        .def_readwrite("start", &NoteOptions::start)
+        .def_readwrite("restart", &NoteOptions::restart)
+        .def_readwrite("footnote_position", &NoteOptions::footnotePosition)
+        .def_readwrite("endnote_position", &NoteOptions::endnotePosition)
+        ;
+    py::class_<Author>(m, "Author")
+        .def(py::init<>())
+        .def_readwrite("first", &Author::first)
+        .def_readwrite("last", &Author::last)
+        .def_readwrite("middle", &Author::middle)
+        .def_readwrite("corporate", &Author::corporate)
+        ;
+    py::class_<BibliographySource>(m, "BibliographySource")
+        .def(py::init<>())
+        .def_readwrite("tag", &BibliographySource::tag)
+        .def_readwrite("title", &BibliographySource::title)
+        .def_readwrite("type", &BibliographySource::type)
+        .def_readwrite("authors", &BibliographySource::authors)
+        .def_readwrite("year", &BibliographySource::year)
+        .def_readwrite("month", &BibliographySource::month)
+        .def_readwrite("day", &BibliographySource::day)
+        .def_readwrite("publisher", &BibliographySource::publisher)
+        .def_readwrite("city", &BibliographySource::city)
+        .def_readwrite("journal", &BibliographySource::journal)
+        .def_readwrite("volume", &BibliographySource::volume)
+        .def_readwrite("issue", &BibliographySource::issue)
+        .def_readwrite("pages", &BibliographySource::pages)
+        .def_readwrite("doi", &BibliographySource::doi)
+        .def_readwrite("url", &BibliographySource::url)
+        .def_readwrite("accessed_year", &BibliographySource::accessedYear)
+        .def_readwrite("accessed_month", &BibliographySource::accessedMonth)
+        .def_readwrite("accessed_day", &BibliographySource::accessedDay)
+        .def_readwrite("language", &BibliographySource::language)
+        ;
+    py::class_<DocumentProperties>(m, "DocumentProperties")
+        .def(py::init<>())
+        .def_readwrite("title", &DocumentProperties::title)
+        .def_readwrite("subject", &DocumentProperties::subject)
+        .def_readwrite("creator", &DocumentProperties::creator)
+        .def_readwrite("keywords", &DocumentProperties::keywords)
+        .def_readwrite("description", &DocumentProperties::description)
+        .def_readwrite("last_modified_by", &DocumentProperties::lastModifiedBy)
+        .def_readwrite("language", &DocumentProperties::language)
+        ;
+    py::class_<CustomProperty>(m, "CustomProperty")
+        .def(py::init<>())
+        .def_readwrite("value", &CustomProperty::value)
+        .def_readwrite("type", &CustomProperty::type)
+        ;
+    py::class_<Border>(m, "Border")
+        .def(py::init<>())
+        .def_readwrite("style", &Border::style)
+        .def_readwrite("color", &Border::color)
+        .def_readwrite("width", &Border::width)
+        .def_readwrite("space", &Border::space)
+        ;
+    py::class_<TabStop>(m, "TabStop")
+        .def(py::init<>())
+        .def_readwrite("position", &TabStop::position)
+        .def_readwrite("alignment", &TabStop::alignment)
+        .def_readwrite("leader", &TabStop::leader)
+        ;
+    py::class_<Column>(m, "Column")
+        .def(py::init<>())
+        .def_readwrite("width", &Column::width)
+        .def_readwrite("space", &Column::space)
+        ;
     py::class_<Page>(m, "Page")
         .def(py::init<>())
-        .def("set_size", &Page::setSize)
-        .def("set_orientation", &Page::setOrientation)
-        .def("set_margins", &Page::setMargins,
-             py::arg("top"), py::arg("bottom"), py::arg("left"), py::arg("right"))
         .def_readwrite("size", &Page::size)
         .def_readwrite("orientation", &Page::orientation)
-        .def_readwrite("margins", &Page::margins);
-
+        .def_readwrite("margins", &Page::margins)
+        .def_readwrite("custom_width", &Page::customWidth)
+        .def_readwrite("custom_height", &Page::customHeight)
+        .def_readwrite("header_distance", &Page::headerDistance)
+        .def_readwrite("footer_distance", &Page::footerDistance)
+        .def_readwrite("gutter", &Page::gutter)
+        .def("set_size", &Page::setSize, py::return_value_policy::reference_internal)
+        .def("set_orientation", &Page::setOrientation, py::return_value_policy::reference_internal)
+        .def("set_margins", &Page::setMargins, py::return_value_policy::reference_internal)
+        .def("set_custom_size", &Page::setCustomSize, py::return_value_policy::reference_internal)
+        .def("set_header_distance", &Page::setHeaderDistance, py::return_value_policy::reference_internal)
+        .def("set_footer_distance", &Page::setFooterDistance, py::return_value_policy::reference_internal)
+        .def("set_gutter", &Page::setGutter, py::return_value_policy::reference_internal)
+        ;
     py::class_<HeadingStyle>(m, "HeadingStyle")
         .def(py::init<>())
-        .def("set_font", &HeadingStyle::setFont)
-        .def("set_font_size", &HeadingStyle::setFontSize)
-        .def("set_bold", &HeadingStyle::setBold, py::arg("b") = true)
-        .def("set_italic", &HeadingStyle::setItalic, py::arg("i") = true)
-        .def("set_color", &HeadingStyle::setColor)
-        .def("set_line_spacing", &HeadingStyle::setLineSpacing)
-        .def("set_space_before", &HeadingStyle::setSpaceBefore)
-        .def("set_space_after", &HeadingStyle::setSpaceAfter)
-        .def("set_alignment", &HeadingStyle::setAlignment)
         .def_readwrite("font", &HeadingStyle::font)
         .def_readwrite("font_size", &HeadingStyle::fontSize)
         .def_readwrite("bold", &HeadingStyle::bold)
@@ -92,318 +289,302 @@ PYBIND11_MODULE(_native, m) {
         .def_readwrite("color", &HeadingStyle::color)
         .def_readwrite("line_spacing", &HeadingStyle::lineSpacing)
         .def_readwrite("space_before", &HeadingStyle::spaceBefore)
-        .def_readwrite("space_after", &HeadingStyle::spaceAfter);
-
+        .def_readwrite("space_after", &HeadingStyle::spaceAfter)
+        .def_readwrite("alignment", &HeadingStyle::alignment)
+        .def_readwrite("has_alignment", &HeadingStyle::hasAlignment)
+        .def("set_font", &HeadingStyle::setFont, py::return_value_policy::reference_internal)
+        .def("set_font_size", &HeadingStyle::setFontSize, py::return_value_policy::reference_internal)
+        .def("set_bold", &HeadingStyle::setBold, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("set_italic", &HeadingStyle::setItalic, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("set_color", &HeadingStyle::setColor, py::return_value_policy::reference_internal)
+        .def("set_line_spacing", &HeadingStyle::setLineSpacing, py::return_value_policy::reference_internal)
+        .def("set_space_before", &HeadingStyle::setSpaceBefore, py::return_value_policy::reference_internal)
+        .def("set_space_after", &HeadingStyle::setSpaceAfter, py::return_value_policy::reference_internal)
+        .def("set_alignment", &HeadingStyle::setAlignment, py::return_value_policy::reference_internal)
+        ;
     py::class_<RunStyle>(m, "RunStyle")
         .def(py::init<>())
-        .def("bold", [](RunStyle& s, bool on) -> RunStyle& { return s.bold(on); },
-             py::arg("on") = true)
-        .def("italic", [](RunStyle& s, bool on) -> RunStyle& { return s.italic(on); },
-             py::arg("on") = true)
-        .def("underline", [](RunStyle& s, bool on) -> RunStyle& { return s.underline(on); },
-             py::arg("on") = true)
-        .def("font_size", [](RunStyle& s, double pt) -> RunStyle& { return s.fontSize(pt); })
-        .def("color", [](RunStyle& s, const std::string& c) -> RunStyle& { return s.color(c); })
-        .def("font", [](RunStyle& s, const std::string& n) -> RunStyle& { return s.font(n); });
-
-    // ═══════════════════════════════════════════════════════════
-    //  CellImage
-    // ═══════════════════════════════════════════════════════════
-
-    py::class_<CellImage>(m, "CellImage")
+        .def("bold", [](RunStyle& s,bool on)->RunStyle&{return s.bold(on);}, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("italic", [](RunStyle& s,bool on)->RunStyle&{return s.italic(on);}, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("underline", [](RunStyle& s,bool on)->RunStyle&{return s.underline(on);}, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("font_size", [](RunStyle& s,double n)->RunStyle&{return s.fontSize(n);}, py::return_value_policy::reference_internal)
+        .def("color", [](RunStyle& s,const std::string& n)->RunStyle&{return s.color(n);}, py::return_value_policy::reference_internal)
+        .def("font", [](RunStyle& s,const std::string& n)->RunStyle&{return s.font(n);}, py::return_value_policy::reference_internal)
+        .def("east_asia_font", &RunStyle::eastAsiaFont, py::return_value_policy::reference_internal)
+        .def("strike", &RunStyle::strike, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("superscript", &RunStyle::superscript, py::return_value_policy::reference_internal)
+        .def("subscript", &RunStyle::subscript, py::return_value_policy::reference_internal)
+        .def("baseline", &RunStyle::baseline, py::return_value_policy::reference_internal)
+        .def("highlight", &RunStyle::highlight, py::return_value_policy::reference_internal)
+        .def("set_style_id", &RunStyle::setStyleId, py::return_value_policy::reference_internal)
+        .def("inherit_bold", &RunStyle::inheritBold, py::return_value_policy::reference_internal)
+        .def("inherit_italic", &RunStyle::inheritItalic, py::return_value_policy::reference_internal)
+        .def("inherit_underline", &RunStyle::inheritUnderline, py::return_value_policy::reference_internal)
+        .def("has_formatting", &RunStyle::hasFormatting, py::return_value_policy::reference_internal)
+        ;
+    py::class_<ParagraphStyle>(m, "ParagraphStyle")
         .def(py::init<>())
-        .def("set_caption", &CellImage::setCaption)
-        .def_readwrite("filepath", &CellImage::filepath)
-        .def_readwrite("width", &CellImage::width)
-        .def_readwrite("height", &CellImage::height)
-        .def_readwrite("skipped", &CellImage::skipped)
-        .def_readwrite("caption", &CellImage::caption);
-
-    // ═══════════════════════════════════════════════════════════
-    //  Equation
-    // ═══════════════════════════════════════════════════════════
-
+        .def_readwrite("based_on", &ParagraphStyle::basedOn)
+        .def_readwrite("next", &ParagraphStyle::next)
+        .def_readwrite("shading", &ParagraphStyle::shading)
+        .def_readwrite("run", &ParagraphStyle::run)
+        .def_readwrite("alignment", &ParagraphStyle::alignment)
+        .def_readwrite("left_indent", &ParagraphStyle::leftIndent)
+        .def_readwrite("right_indent", &ParagraphStyle::rightIndent)
+        .def_readwrite("first_line", &ParagraphStyle::firstLine)
+        .def_readwrite("hanging", &ParagraphStyle::hanging)
+        .def_readwrite("before", &ParagraphStyle::before)
+        .def_readwrite("after", &ParagraphStyle::after)
+        .def_readwrite("first_line_chars", &ParagraphStyle::firstLineChars)
+        .def_readwrite("line_spacing", &ParagraphStyle::lineSpacing)
+        .def_readwrite("line_rule", &ParagraphStyle::lineRule)
+        .def_readwrite("page_break_before", &ParagraphStyle::pageBreakBefore)
+        .def_readwrite("keep_next", &ParagraphStyle::keepNext)
+        .def_readwrite("keep_lines", &ParagraphStyle::keepLines)
+        .def_readwrite("widow_control", &ParagraphStyle::widowControl)
+        .def_readwrite("tabs", &ParagraphStyle::tabs)
+        .def_readwrite("border", &ParagraphStyle::border)
+        ;
+    py::class_<TableStyleDefinition>(m, "TableStyleDefinition")
+        .def(py::init<>())
+        .def_readwrite("based_on", &TableStyleDefinition::basedOn)
+        .def_readwrite("shading", &TableStyleDefinition::shading)
+        .def_readwrite("run", &TableStyleDefinition::run)
+        .def_readwrite("border", &TableStyleDefinition::border)
+        .def_readwrite("cell_margin", &TableStyleDefinition::cellMargin)
+        ;
     py::class_<Equation>(m, "Equation")
-        .def(py::init<const std::string&, EquationMode>(),
-             py::arg("latex"), py::arg("mode") = EquationMode::Inline)
-        .def("set_mode", &Equation::setMode)
-        .def("set_style", &Equation::setStyle)
-        .def("latex", &Equation::latex)
-        .def("mode", &Equation::mode)
-        .def("to_xml", &Equation::toXml);
-
-    // ═══════════════════════════════════════════════════════════
-    //  Paragraph
-    // ═══════════════════════════════════════════════════════════
-
-    py::class_<Paragraph>(m, "Paragraph")
-        .def(py::init<>())
-        .def("add_run",
-             py::overload_cast<const std::string&>(&Paragraph::addRun),
-             py::return_value_policy::reference_internal)
-        .def("add_run",
-             py::overload_cast<const std::string&, const RunStyle&>(&Paragraph::addRun),
-             py::return_value_policy::reference_internal)
-        .def("add_equation", &Paragraph::addEquation,
-             py::return_value_policy::reference_internal)
-        .def("add_page_number", &Paragraph::addPageNumber,
-             py::return_value_policy::reference_internal)
-        .def("add_page_count", &Paragraph::addPageCount,
-             py::return_value_policy::reference_internal)
-        .def("add_footnote_ref", &Paragraph::addFootnoteRef,
-             py::return_value_policy::reference_internal)
-        .def("set_alignment", &Paragraph::setAlignment,
-             py::return_value_policy::reference_internal)
-        .def("set_first_line_indent", &Paragraph::setFirstLineIndent,
-             py::return_value_policy::reference_internal)
-        .def("set_first_line_indent_chars", &Paragraph::setFirstLineIndentChars,
-             py::return_value_policy::reference_internal,
-             py::arg("chars"), py::arg("font_size_pt") = 12)
-        .def("set_spacing_after", &Paragraph::setSpacingAfter,
-             py::return_value_policy::reference_internal)
-        .def("set_spacing_before", &Paragraph::setSpacingBefore,
-             py::return_value_policy::reference_internal)
-        .def("set_default_run_style", &Paragraph::setStyle,
-             py::return_value_policy::reference_internal)
-        .def("to_xml", &Paragraph::toXml);
-
-    // ═══════════════════════════════════════════════════════════
-    //  Image
-    // ═══════════════════════════════════════════════════════════
-
+        .def(py::init<const std::string&,EquationMode>(),py::arg("latex"),py::arg("mode")=EquationMode::Inline)
+        .def("set_mode", &Equation::setMode, py::return_value_policy::reference_internal)
+        .def("set_style", &Equation::setStyle, py::return_value_policy::reference_internal)
+        .def("get_style", &Equation::getStyle, py::return_value_policy::reference_internal)
+        .def("latex", &Equation::latex, py::return_value_policy::reference_internal)
+        .def("mode", &Equation::mode, py::return_value_policy::reference_internal)
+        .def("to_xml", &Equation::toXml, py::return_value_policy::reference_internal)
+        ;
     py::class_<Image>(m, "Image")
         .def(py::init<const std::string&>())
-        .def("set_size", &Image::setSize)
-        .def("set_alignment", &Image::setAlignment)
-        .def("set_caption", &Image::setCaption)
-        .def_property_readonly("filepath", &Image::filepath)
-        .def_property_readonly("width", &Image::width)
-        .def_property_readonly("height", &Image::height)
-        .def_property_readonly("alignment", &Image::alignment)
-        .def_property_readonly("has_alignment", &Image::hasAlignment)
-        .def_property_readonly("caption", &Image::caption)
-        .def_property_readonly("skipped", &Image::skipped);
-
-    // ═══════════════════════════════════════════════════════════
-    //  Cell
-    // ═══════════════════════════════════════════════════════════
-
-    py::class_<Cell>(m, "Cell")
+        .def("set_size", &Image::setSize, py::return_value_policy::reference_internal)
+        .def("set_alignment", &Image::setAlignment, py::return_value_policy::reference_internal)
+        .def("set_bookmark", &Image::setBookmark, py::return_value_policy::reference_internal)
+        .def("set_wrap", &Image::setWrap, py::return_value_policy::reference_internal)
+        .def("set_crop", &Image::setCrop, py::return_value_policy::reference_internal)
+        .def("set_svg_fallback", &Image::setSvgFallback, py::return_value_policy::reference_internal)
+        .def("set_dimensions", &Image::setDimensions, py::return_value_policy::reference_internal)
+        .def("filepath", &Image::filepath, py::return_value_policy::reference_internal)
+        .def("width", &Image::width, py::return_value_policy::reference_internal)
+        .def("height", &Image::height, py::return_value_policy::reference_internal)
+        .def("alignment", &Image::alignment, py::return_value_policy::reference_internal)
+        .def("caption", &Image::caption, py::return_value_policy::reference_internal)
+        .def("skipped", &Image::skipped, py::return_value_policy::reference_internal)
+        .def("set_caption", py::overload_cast<const std::string&>(&Image::setCaption), py::return_value_policy::reference_internal)
+        .def("set_position", &Image::setPosition, py::return_value_policy::reference_internal, py::arg("x"),py::arg("y"),py::arg("horizontal")=PositionRelative::Margin,py::arg("vertical")=PositionRelative::Paragraph)
+        .def("set_keep_aspect_ratio", &Image::setKeepAspectRatio, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("set_alt_text", &Image::setAltText, py::return_value_policy::reference_internal, py::arg("description"),py::arg("title")="")
+        ;
+    m.attr("CellImage")=m.attr("Image");
+    py::class_<Paragraph>(m, "Paragraph")
         .def(py::init<>())
-        .def("add_paragraph",
-             py::overload_cast<const std::string&>(&Cell::addParagraph),
-             py::return_value_policy::reference_internal,
-             py::arg("text") = "")
-        .def("add_paragraph",
-             py::overload_cast<const std::string&, const RunStyle&>(&Cell::addParagraph),
-             py::return_value_policy::reference_internal)
-        .def("add_equation", &Cell::addEquation,
-             py::return_value_policy::reference_internal)
-        .def("add_image",
-             py::overload_cast<const std::string&>(&Cell::addImage),
-             py::return_value_policy::reference_internal)
-        .def("add_image",
-             py::overload_cast<const std::string&, int, int>(&Cell::addImage),
-             py::return_value_policy::reference_internal);
-
-    // ═══════════════════════════════════════════════════════════
-    //  Table
-    // ═══════════════════════════════════════════════════════════
-
-    py::class_<Table>(m, "Table")
-        .def(py::init<int, int>())
-        .def("set_header_row", &Table::setHeaderRow,
-             py::return_value_policy::reference_internal)
-        .def("set_style", &Table::setBorderStyle,
-             py::return_value_policy::reference_internal)
-        .def("set_run_style", &Table::setStyle,
-             py::return_value_policy::reference_internal)
-        .def("set_caption", &Table::setCaption,
-             py::return_value_policy::reference_internal)
-        .def("caption", &Table::caption)
-        .def("cell", py::overload_cast<int, int>(&Table::cell),
-             py::return_value_policy::reference_internal)
-        .def("merge_cells", &Table::mergeCells,
-             py::return_value_policy::reference_internal)
-        .def("rows", &Table::rows)
-        .def("cols", &Table::cols)
-        .def("set_column_width", &Table::setColumnWidth,
-             py::return_value_policy::reference_internal)
-        .def("set_column_widths", &Table::setColumnWidths,
-             py::return_value_policy::reference_internal)
-        .def("to_xml", &Table::toXml);
-
-    // ═══════════════════════════════════════════════════════════
-    //  BulletList
-    // ═══════════════════════════════════════════════════════════
-
+        .def("add_run", py::overload_cast<const std::string&>(&Paragraph::addRun), py::return_value_policy::reference_internal)
+        .def("add_run", py::overload_cast<const std::string&,const RunStyle&>(&Paragraph::addRun), py::return_value_policy::reference_internal)
+        .def("add_equation", py::overload_cast<const std::string&>(&Paragraph::addEquation), py::return_value_policy::reference_internal)
+        .def("add_page_number", &Paragraph::addPageNumber, py::return_value_policy::reference_internal)
+        .def("add_page_count", &Paragraph::addPageCount, py::return_value_policy::reference_internal)
+        .def("add_section_page_count", &Paragraph::addSectionPageCount, py::return_value_policy::reference_internal)
+        .def("add_footnote_ref", &Paragraph::addFootnoteRef, py::return_value_policy::reference_internal)
+        .def("add_endnote_ref", &Paragraph::addEndnoteRef, py::return_value_policy::reference_internal)
+        .def("add_tab", &Paragraph::addTab, py::return_value_policy::reference_internal)
+        .def("start_bookmark", &Paragraph::startBookmark, py::return_value_policy::reference_internal)
+        .def("end_bookmark", &Paragraph::endBookmark, py::return_value_policy::reference_internal)
+        .def("set_bookmark", &Paragraph::setBookmark, py::return_value_policy::reference_internal)
+        .def("start_comment", &Paragraph::startComment, py::return_value_policy::reference_internal)
+        .def("end_comment", &Paragraph::endComment, py::return_value_policy::reference_internal)
+        .def("add_image", &Paragraph::addImage, py::return_value_policy::reference_internal)
+        .def("set_style_id", &Paragraph::setStyleId, py::return_value_policy::reference_internal)
+        .def("set_paragraph_style", &Paragraph::setParagraphStyle, py::return_value_policy::reference_internal)
+        .def("set_alignment", &Paragraph::setAlignment, py::return_value_policy::reference_internal)
+        .def("set_first_line_indent", &Paragraph::setFirstLineIndent, py::return_value_policy::reference_internal)
+        .def("set_spacing_after", &Paragraph::setSpacingAfter, py::return_value_policy::reference_internal)
+        .def("set_spacing_before", &Paragraph::setSpacingBefore, py::return_value_policy::reference_internal)
+        .def("set_style", &Paragraph::setStyle, py::return_value_policy::reference_internal)
+        .def("get_style", &Paragraph::getStyle, py::return_value_policy::reference_internal)
+        .def("set_left_indent", &Paragraph::setLeftIndent, py::return_value_policy::reference_internal)
+        .def("set_right_indent", &Paragraph::setRightIndent, py::return_value_policy::reference_internal)
+        .def("set_hanging_indent", &Paragraph::setHangingIndent, py::return_value_policy::reference_internal)
+        .def("add_tab_stop", &Paragraph::addTabStop, py::return_value_policy::reference_internal)
+        .def("set_border", &Paragraph::setBorder, py::return_value_policy::reference_internal)
+        .def("set_shading", &Paragraph::setShading, py::return_value_policy::reference_internal)
+        .def("to_xml", &Paragraph::toXml, py::return_value_policy::reference_internal)
+        .def("set_default_run_style", &Paragraph::setStyle, py::return_value_policy::reference_internal)
+        .def("set_page_break_before", &Paragraph::setPageBreakBefore, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("set_keep_with_next", &Paragraph::setKeepWithNext, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("set_keep_together", &Paragraph::setKeepTogether, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("set_widow_control", &Paragraph::setWidowControl, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("set_first_line_indent_chars", &Paragraph::setFirstLineIndentChars, py::return_value_policy::reference_internal, py::arg("chars"),py::arg("font_size_pt")=12)
+        .def("set_line_spacing", &Paragraph::setLineSpacing, py::return_value_policy::reference_internal, py::arg("value"),py::arg("rule")=LineRule::Auto)
+        .def("set_numbering", &Paragraph::setNumbering, py::return_value_policy::reference_internal, py::arg("id"),py::arg("level")=0)
+        .def("add_break", &Paragraph::addBreak, py::return_value_policy::reference_internal, py::arg("type")=BreakType::Line)
+        .def("add_field", &Paragraph::addField, py::return_value_policy::reference_internal, py::arg("instruction"),py::arg("cached")="")
+        .def("add_hyperlink", &Paragraph::addHyperlink, py::return_value_policy::reference_internal, py::arg("text"),py::arg("url"),py::arg("style")=RunStyle())
+        .def("add_reference", &Paragraph::addReference, py::return_value_policy::reference_internal, py::arg("target"),py::arg("kind")=ReferenceKind::Text,py::arg("hyperlink")=true)
+        .def("add_citation", &Paragraph::addCitation, py::return_value_policy::reference_internal, py::arg("tag"),py::arg("pages")="")
+        ;
     py::class_<BulletList>(m, "BulletList")
-        .def(py::init<ListType>(), py::arg("type") = ListType::Bullet)
-        .def("add_item", &BulletList::addItem,
-             py::return_value_policy::reference_internal)
-        .def("set_level", &BulletList::setLevel,
-             py::return_value_policy::reference_internal)
-        .def("set_num_id", &BulletList::setNumId,
-             py::return_value_policy::reference_internal)
-        .def("num_id", &BulletList::numId)
-        .def("type", &BulletList::type)
-        .def("to_xml", &BulletList::toXml);
-
-    // ═══════════════════════════════════════════════════════════
-    //  Document
-    // ═══════════════════════════════════════════════════════════
-
+        .def(py::init<ListType>(),py::arg("type")=ListType::Bullet)
+        .def("add_item", &BulletList::addItem, py::return_value_policy::reference_internal)
+        .def("set_level", &BulletList::setLevel, py::return_value_policy::reference_internal)
+        .def("set_num_id", &BulletList::setNumId, py::return_value_policy::reference_internal)
+        .def("set_start", &BulletList::setStart, py::return_value_policy::reference_internal)
+        .def("continue_from", &BulletList::continueFrom, py::return_value_policy::reference_internal)
+        .def("num_id", &BulletList::numId, py::return_value_policy::reference_internal)
+        .def("type", &BulletList::type, py::return_value_policy::reference_internal)
+        .def("to_xml", &BulletList::toXml, py::return_value_policy::reference_internal)
+        .def("add_item_paragraph", &BulletList::addItemParagraph, py::return_value_policy::reference_internal, py::arg("text")="",py::arg("level")=-1)
+        .def("set_format", &BulletList::setFormat, py::return_value_policy::reference_internal, py::arg("format"),py::arg("text")="%1.")
+        ;
+    py::class_<Content>(m, "Content")
+        .def(py::init<>())
+        .def("add_paragraph", py::overload_cast<const std::string&>(&Content::addParagraph), py::return_value_policy::reference_internal, py::arg("text")="")
+        .def("add_paragraph", py::overload_cast<const std::string&,const RunStyle&>(&Content::addParagraph), py::return_value_policy::reference_internal)
+        .def("add_equation", py::overload_cast<const std::string&>(&Content::addEquation), py::return_value_policy::reference_internal)
+        .def("add_math", &Content::addMath, py::return_value_policy::reference_internal, py::arg("latex"),py::arg("mode")=EquationMode::Display)
+        .def("add_image", py::overload_cast<const std::string&>(&Content::addImage), py::return_value_policy::reference_internal)
+        .def("add_image", py::overload_cast<const std::string&,int,int>(&Content::addImage), py::return_value_policy::reference_internal)
+        .def("add_table", &Content::addTable, py::return_value_policy::reference_internal)
+        .def("add_bullet_list", &Content::addBulletList, py::return_value_policy::reference_internal)
+        .def("add_ordered_list", &Content::addOrderedList, py::return_value_policy::reference_internal)
+        .def("set_style", &Content::setStyle, py::return_value_policy::reference_internal)
+        .def("get_style", &Content::getStyle, py::return_value_policy::reference_internal)
+        .def("empty", &Content::empty, py::return_value_policy::reference_internal)
+        .def("to_xml", &Content::toXml, py::return_value_policy::reference_internal)
+        ;
+    py::class_<Note, Content>(m, "Note")
+        .def("id", &Note::id, py::return_value_policy::reference_internal)
+        ;
+    py::class_<Cell, Content>(m, "Cell")
+        .def(py::init<>())
+        .def("set_v_align", &Cell::setVAlign, py::return_value_policy::reference_internal)
+        .def("v_align", &Cell::vAlign, py::return_value_policy::reference_internal)
+        .def("set_shading", &Cell::setShading, py::return_value_policy::reference_internal)
+        .def("set_border", &Cell::setBorder, py::return_value_policy::reference_internal)
+        .def("set_margins", &Cell::setMargins, py::return_value_policy::reference_internal)
+        ;
+    py::class_<Table>(m, "Table")
+        .def(py::init<int,int>())
+        .def("set_header_row", &Table::setHeaderRow, py::return_value_policy::reference_internal)
+        .def("set_header_rows", &Table::setHeaderRows, py::return_value_policy::reference_internal)
+        .def("set_width", &Table::setWidth, py::return_value_policy::reference_internal)
+        .def("set_style_id", &Table::setStyleId, py::return_value_policy::reference_internal)
+        .def("set_border_style", &Table::setBorderStyle, py::return_value_policy::reference_internal)
+        .def("set_border", &Table::setBorder, py::return_value_policy::reference_internal)
+        .def("set_shading", &Table::setShading, py::return_value_policy::reference_internal)
+        .def("set_cell_margins", &Table::setCellMargins, py::return_value_policy::reference_internal)
+        .def("set_style", &Table::setStyle, py::return_value_policy::reference_internal)
+        .def("get_style", &Table::getStyle, py::return_value_policy::reference_internal)
+        .def("set_v_align", &Table::setVAlign, py::return_value_policy::reference_internal)
+        .def("set_bookmark", &Table::setBookmark, py::return_value_policy::reference_internal)
+        .def("caption", &Table::caption, py::return_value_policy::reference_internal)
+        .def("merge_cells", &Table::mergeCells, py::return_value_policy::reference_internal)
+        .def("rows", &Table::rows, py::return_value_policy::reference_internal)
+        .def("cols", &Table::cols, py::return_value_policy::reference_internal)
+        .def("set_column_width", &Table::setColumnWidth, py::return_value_policy::reference_internal)
+        .def("set_column_widths", &Table::setColumnWidths, py::return_value_policy::reference_internal)
+        .def("get_column_width", &Table::getColumnWidth, py::return_value_policy::reference_internal)
+        .def("to_xml", &Table::toXml, py::return_value_policy::reference_internal)
+        .def("set_run_style", &Table::setStyle, py::return_value_policy::reference_internal)
+        .def("cell", py::overload_cast<int,int>(&Table::cell), py::return_value_policy::reference_internal)
+        .def("set_caption", py::overload_cast<const std::string&>(&Table::setCaption), py::return_value_policy::reference_internal)
+        .def("set_row_allow_split", &Table::setRowAllowSplit, py::return_value_policy::reference_internal, py::arg("row"),py::arg("allow")=true)
+        .def("set_auto_fit", &Table::setAutoFit, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("set_row_height", &Table::setRowHeight, py::return_value_policy::reference_internal, py::arg("row"),py::arg("height"),py::arg("exact")=false)
+        ;
+    py::class_<Section>(m, "Section")
+        .def("set_page", &Section::setPage, py::return_value_policy::reference_internal)
+        .def("page", &Section::page, py::return_value_policy::reference_internal)
+        .def("set_footnote_options", &Section::setFootnoteOptions, py::return_value_policy::reference_internal)
+        .def("set_endnote_options", &Section::setEndnoteOptions, py::return_value_policy::reference_internal)
+        .def("set_columns", &Section::setColumns, py::return_value_policy::reference_internal, py::arg("count"),py::arg("space")=Length::pt(36),py::arg("separator")=false)
+        .def("set_column_widths", &Section::setColumnWidths, py::return_value_policy::reference_internal, py::arg("columns"),py::arg("separator")=false)
+        .def("set_page_numbering", &Section::setPageNumbering, py::return_value_policy::reference_internal, py::arg("format")=NumberFormat::Decimal,py::arg("start")=0)
+        .def("set_title_page", &Section::setTitlePage, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("header", &Section::header, py::return_value_policy::reference_internal, py::arg("type")=HeaderFooterType::Default)
+        .def("footer", &Section::footer, py::return_value_policy::reference_internal, py::arg("type")=HeaderFooterType::Default)
+        .def("link_header_to_previous", &Section::linkHeaderToPrevious, py::return_value_policy::reference_internal, py::arg("type")=HeaderFooterType::Default)
+        .def("link_footer_to_previous", &Section::linkFooterToPrevious, py::return_value_policy::reference_internal, py::arg("type")=HeaderFooterType::Default)
+        .def("clear_header", &Section::clearHeader, py::return_value_policy::reference_internal, py::arg("type")=HeaderFooterType::Default)
+        .def("clear_footer", &Section::clearFooter, py::return_value_policy::reference_internal, py::arg("type")=HeaderFooterType::Default)
+        ;
     py::class_<Document>(m, "Document")
         .def(py::init<>())
-        // Page settings
-        .def("set_page", &Document::setPage,
-             py::return_value_policy::reference_internal)
-        .def("set_default_paragraph_indent", &Document::setDefaultParagraphIndent,
-             py::return_value_policy::reference_internal,
-             py::arg("chars") = 2, py::arg("font_size_pt") = 12)
-        // Body run style
-        .def("set_body_font", &Document::setBodyFont,
-             py::return_value_policy::reference_internal,
-             py::arg("east_asia"), py::arg("ascii") = "", py::arg("h_ansi") = "")
-        .def("set_body_font_size", &Document::setBodyFontSize,
-             py::return_value_policy::reference_internal)
-        .def("set_body_line_spacing", &Document::setBodyLineSpacing,
-             py::return_value_policy::reference_internal)
-        .def("set_body_run_style", &Document::setBodyRunStyle,
-             py::return_value_policy::reference_internal)
-        .def("set_display_equation_style", &Document::setDisplayEquationStyle,
-             py::return_value_policy::reference_internal)
-        .def("set_table_run_style", &Document::setTableRunStyle,
-             py::return_value_policy::reference_internal)
-        // Headings
-        .def("add_heading", &Document::addHeading,
-             py::return_value_policy::reference_internal)
-        .def("add_heading_no_num", &Document::addHeadingNoNum,
-             py::return_value_policy::reference_internal)
-        .def("set_heading_style", &Document::setHeadingStyle,
-             py::return_value_policy::reference_internal)
-        .def("enable_heading_numbering", &Document::enableHeadingNumbering,
-             py::return_value_policy::reference_internal)
-        .def("disable_heading_numbering", &Document::disableHeadingNumbering,
-             py::return_value_policy::reference_internal)
-        .def("set_heading_num_format", &Document::setHeadingNumFormat,
-             py::return_value_policy::reference_internal)
-        // TOC
-        .def("add_toc", &Document::addTOC,
-             py::return_value_policy::reference_internal,
-             py::arg("levels") = "1-3", py::arg("title") = "")
-        // Paragraphs
-        .def("add_paragraph",
-             py::overload_cast<const std::string&>(&Document::addParagraph),
-             py::return_value_policy::reference_internal,
-             py::arg("text") = "")
-        // Images
-        .def("add_image",
-             py::overload_cast<const std::string&>(&Document::addImage),
-             py::return_value_policy::reference_internal)
-        .def("enable_image_numbering", &Document::enableImageNumbering,
-             py::return_value_policy::reference_internal,
-             py::arg("prefix") = u8"图",
-             py::arg("style") = CaptionNumStyle::Sequential)
-        .def("disable_image_numbering", &Document::disableImageNumbering,
-             py::return_value_policy::reference_internal)
-        // Tables
-        .def("add_table", &Document::addTable,
-             py::return_value_policy::reference_internal)
-        .def("enable_table_numbering", &Document::enableTableNumbering,
-             py::return_value_policy::reference_internal,
-             py::arg("prefix") = u8"表",
-             py::arg("style") = CaptionNumStyle::Sequential)
-        .def("disable_table_numbering", &Document::disableTableNumbering,
-             py::return_value_policy::reference_internal)
-        // Lists
-        .def("add_bullet_list", &Document::addBulletList,
-             py::return_value_policy::reference_internal)
-        .def("add_ordered_list", &Document::addOrderedList,
-             py::return_value_policy::reference_internal)
-        // Sections
-        .def("add_section_break", &Document::addSectionBreak,
-             py::return_value_policy::reference_internal,
-             py::arg("type") = SectionBreakType::NextPage)
-        .def("enable_title_page", &Document::enableTitlePage,
-             py::return_value_policy::reference_internal)
-        // Footnotes
-        .def("add_footnote", &Document::addFootnote)
-        // Equations
-        .def("add_equation", &Document::addEquation,
-             py::return_value_policy::reference_internal)
-        .def("add_display_equation", &Document::addDisplayEquation,
-             py::return_value_policy::reference_internal)
-        // Header / Footer — string overload
-        .def("set_header",
-             py::overload_cast<const std::string&>(&Document::setHeader),
-             py::return_value_policy::reference_internal)
-        .def("set_footer",
-             py::overload_cast<const std::string&>(&Document::setFooter),
-             py::return_value_policy::reference_internal)
-        // Header / Footer — builder overload (no args, returns Paragraph&)
-        .def("set_header",
-             py::overload_cast<>(&Document::setHeader),
-             py::return_value_policy::reference_internal)
-        .def("set_footer",
-             py::overload_cast<>(&Document::setFooter),
-             py::return_value_policy::reference_internal)
-        .def("clear_header", &Document::clearHeader)
-        .def("clear_footer", &Document::clearFooter)
-        // Template engine
-        .def("open", &Document::open)
-        .def("set_var",
-             [](Document& self, const std::string& key, const std::string& v) -> Document& {
-                 return self.set(key, v);
-             }, py::return_value_policy::reference_internal)
-        .def("set_var_bool",
-             [](Document& self, const std::string& key, bool v) -> Document& {
-                 return self.set(key, v);
-             }, py::return_value_policy::reference_internal)
-        .def("set_var_int",
-             [](Document& self, const std::string& key, int v) -> Document& {
-                 return self.set(key, v);
-             }, py::return_value_policy::reference_internal)
-        .def("set_var_float",
-             [](Document& self, const std::string& key, double v, int precision) -> Document& {
-                 return self.set(key, v, precision);
-             }, py::return_value_policy::reference_internal,
-             py::arg("key"), py::arg("value"), py::arg("precision") = 2)
-        .def("set_var",
-             [](Document& self, const std::string& key, Paragraph para) -> Document& {
-                 return self.set(key, std::move(para));
-             }, py::return_value_policy::reference_internal)
-        .def("set_var",
-             [](Document& self, const std::string& key, Table table) -> Document& {
-                 return self.set(key, std::move(table));
-             }, py::return_value_policy::reference_internal)
-        .def("set_var",
-             [](Document& self, const std::string& key, Image image) -> Document& {
-                 return self.set(key, std::move(image));
-             }, py::return_value_policy::reference_internal)
-        .def("set_var",
-             [](Document& self, const std::string& key, BulletList list) -> Document& {
-                 return self.set(key, std::move(list));
-             }, py::return_value_policy::reference_internal)
-        .def("set_var",
-             [](Document& self, const std::string& key, Equation eq) -> Document& {
-                 return self.set(key, std::move(eq));
-             }, py::return_value_policy::reference_internal)
-        .def("set_paragraph", &Document::setParagraph,
-             py::return_value_policy::reference_internal,
-             py::arg("key"), py::arg("text") = "")
-        .def("set_table", &Document::setTable,
-             py::return_value_policy::reference_internal)
-        .def("set_image", &Document::setImage,
-             py::return_value_policy::reference_internal)
-        .def("set_bullet_list", &Document::setBulletList,
-             py::return_value_policy::reference_internal)
-        .def("set_ordered_list", &Document::setOrderedList,
-             py::return_value_policy::reference_internal)
-        .def("set_equation", &Document::setEquation,
-             py::return_value_policy::reference_internal)
-        .def("set_display_equation", &Document::setDisplayEquation,
-             py::return_value_policy::reference_internal)
-        // Save
-        .def("save", &Document::save);
+        .def("set_page", &Document::setPage, py::return_value_policy::reference_internal)
+        .def("set_body_font_size", &Document::setBodyFontSize, py::return_value_policy::reference_internal)
+        .def("set_body_line_spacing", &Document::setBodyLineSpacing, py::return_value_policy::reference_internal)
+        .def("set_body_run_style", &Document::setBodyRunStyle, py::return_value_policy::reference_internal)
+        .def("set_display_equation_style", &Document::setDisplayEquationStyle, py::return_value_policy::reference_internal)
+        .def("set_table_run_style", &Document::setTableRunStyle, py::return_value_policy::reference_internal)
+        .def("set_heading_style", &Document::setHeadingStyle, py::return_value_policy::reference_internal)
+        .def("enable_heading_numbering", &Document::enableHeadingNumbering, py::return_value_policy::reference_internal)
+        .def("disable_heading_numbering", &Document::disableHeadingNumbering, py::return_value_policy::reference_internal)
+        .def("set_heading_num_format", &Document::setHeadingNumFormat, py::return_value_policy::reference_internal)
+        .def("disable_image_numbering", &Document::disableImageNumbering, py::return_value_policy::reference_internal)
+        .def("disable_table_numbering", &Document::disableTableNumbering, py::return_value_policy::reference_internal)
+        .def("add_table", &Document::addTable, py::return_value_policy::reference_internal)
+        .def("add_bullet_list", &Document::addBulletList, py::return_value_policy::reference_internal)
+        .def("add_ordered_list", &Document::addOrderedList, py::return_value_policy::reference_internal)
+        .def("current_section", &Document::currentSection, py::return_value_policy::reference_internal)
+        .def("add_page_break", &Document::addPageBreak, py::return_value_policy::reference_internal)
+        .def("enable_title_page", &Document::enableTitlePage, py::return_value_policy::reference_internal)
+        .def("footnote", &Document::footnote, py::return_value_policy::reference_internal)
+        .def("endnote", &Document::endnote, py::return_value_policy::reference_internal)
+        .def("add_source", &Document::addSource, py::return_value_policy::reference_internal)
+        .def("set_properties", &Document::setProperties, py::return_value_policy::reference_internal)
+        .def("set_custom_property", &Document::setCustomProperty, py::return_value_policy::reference_internal)
+        .def("register_paragraph_style", &Document::registerParagraphStyle, py::return_value_policy::reference_internal)
+        .def("register_table_style", &Document::registerTableStyle, py::return_value_policy::reference_internal)
+        .def("add_equation", &Document::addEquation, py::return_value_policy::reference_internal)
+        .def("add_display_equation", &Document::addDisplayEquation, py::return_value_policy::reference_internal)
+        .def("clear_header", &Document::clearHeader, py::return_value_policy::reference_internal)
+        .def("clear_footer", &Document::clearFooter, py::return_value_policy::reference_internal)
+        .def("open", &Document::open, py::return_value_policy::reference_internal)
+        .def("save", &Document::save, py::return_value_policy::reference_internal)
+        .def("set_default_paragraph_indent", &Document::setDefaultParagraphIndent, py::return_value_policy::reference_internal, py::arg("chars")=2,py::arg("font_size_pt")=12)
+        .def("set_body_font", &Document::setBodyFont, py::return_value_policy::reference_internal, py::arg("east_asia"),py::arg("ascii")="",py::arg("h_ansi")="")
+        .def("add_heading", py::overload_cast<const std::string&,int>(&Document::addHeading), py::return_value_policy::reference_internal)
+        .def("add_heading_no_num", py::overload_cast<const std::string&,int>(&Document::addHeadingNoNum), py::return_value_policy::reference_internal)
+        .def("add_heading_paragraph", &Document::addHeadingParagraph, py::return_value_policy::reference_internal, py::arg("text"),py::arg("level"),py::arg("numbered")=true)
+        .def("add_toc", py::overload_cast<const std::string&,const std::string&>(&Document::addTOC), py::return_value_policy::reference_internal, py::arg("levels")="1-3",py::arg("title")="")
+        .def("add_figure_toc", &Document::addFigureTOC, py::return_value_policy::reference_internal, py::arg("title")="")
+        .def("add_table_toc", &Document::addTableTOC, py::return_value_policy::reference_internal, py::arg("title")="")
+        .def("add_paragraph", py::overload_cast<const std::string&>(&Document::addParagraph), py::return_value_policy::reference_internal, py::arg("text")="")
+        .def("add_image", py::overload_cast<const std::string&>(&Document::addImage), py::return_value_policy::reference_internal)
+        .def("enable_image_numbering", &Document::enableImageNumbering, py::return_value_policy::reference_internal, py::arg("prefix")=u8"图",py::arg("style")=CaptionNumStyle::Sequential)
+        .def("enable_table_numbering", &Document::enableTableNumbering, py::return_value_policy::reference_internal, py::arg("prefix")=u8"表",py::arg("style")=CaptionNumStyle::Sequential)
+        .def("add_section", &Document::addSection, py::return_value_policy::reference_internal, py::arg("type")=SectionBreakType::NextPage)
+        .def("add_section_break", &Document::addSectionBreak, py::return_value_policy::reference_internal, py::arg("type")=SectionBreakType::NextPage)
+        .def("set_even_and_odd_headers", &Document::setEvenAndOddHeaders, py::return_value_policy::reference_internal, py::arg("on")=true)
+        .def("add_footnote", py::overload_cast<>(&Document::addFootnote), py::return_value_policy::reference_internal)
+        .def("add_footnote", py::overload_cast<const std::string&>(&Document::addFootnote), py::return_value_policy::reference_internal)
+        .def("add_endnote", py::overload_cast<>(&Document::addEndnote), py::return_value_policy::reference_internal)
+        .def("add_endnote", py::overload_cast<const std::string&>(&Document::addEndnote), py::return_value_policy::reference_internal)
+        .def("set_header", py::overload_cast<>(&Document::setHeader), py::return_value_policy::reference_internal)
+        .def("set_header", py::overload_cast<const std::string&>(&Document::setHeader), py::return_value_policy::reference_internal)
+        .def("set_footer", py::overload_cast<>(&Document::setFooter), py::return_value_policy::reference_internal)
+        .def("set_footer", py::overload_cast<const std::string&>(&Document::setFooter), py::return_value_policy::reference_internal)
+        .def("add_comment", &Document::addComment, py::return_value_policy::reference_internal, py::arg("text"),py::arg("author"),py::arg("date")="")
+        .def("set_bibliography_style", &Document::setBibliographyStyle, py::return_value_policy::reference_internal, py::arg("style")="IEEE")
+        .def("add_bibliography", &Document::addBibliography, py::return_value_policy::reference_internal, py::arg("title")="")
+        .def("register_character_style", &Document::registerCharacterStyle, py::return_value_policy::reference_internal, py::arg("id"),py::arg("style"),py::arg("based_on")="")
+        .def("save_detailed", &Document::saveDetailed, py::return_value_policy::reference_internal, py::arg("path"),py::arg("options")=SaveOptions())
+        .def("set_var", [](Document& d,const std::string& key,const std::string& value)->Document&{return d.set(key,value);}, py::return_value_policy::reference_internal)
+        .def("set_var_bool", [](Document& d,const std::string& key,bool value)->Document&{return d.set(key,value);}, py::return_value_policy::reference_internal)
+        .def("set_var_int", [](Document& d,const std::string& key,int value)->Document&{return d.set(key,value);}, py::return_value_policy::reference_internal)
+        .def("set_var_float", [](Document& d,const std::string& key,double value,int precision)->Document&{return d.set(key,value,precision);}, py::return_value_policy::reference_internal, py::arg("key"),py::arg("value"),py::arg("precision")=2)
+        .def("set_paragraph", &Document::setParagraph, py::return_value_policy::reference_internal, py::arg("key"),py::arg("text")="")
+        .def("set_table", &Document::setTable, py::return_value_policy::reference_internal)
+        .def("set_image", &Document::setImage, py::return_value_policy::reference_internal)
+        .def("set_bullet_list", &Document::setBulletList, py::return_value_policy::reference_internal)
+        .def("set_ordered_list", &Document::setOrderedList, py::return_value_policy::reference_internal)
+        .def("set_equation", &Document::setEquation, py::return_value_policy::reference_internal)
+        .def("set_display_equation", &Document::setDisplayEquation, py::return_value_policy::reference_internal)
+        ;
 }

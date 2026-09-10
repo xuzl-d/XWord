@@ -1,6 +1,9 @@
 #pragma once
 
 #include <string>
+#include <cmath>
+#include <stdexcept>
+#include <vector>
 
 namespace xword {
 
@@ -48,9 +51,84 @@ enum class SectionBreakType {
     Continuous,   ///< New section starts on the same page.
     EvenPage,     ///< New section starts on the next even-numbered page.
     OddPage,      ///< New section starts on the next odd-numbered page.
+    NextColumn,   ///< New section starts in the next column.
 };
 
 // ── Value types ──────────────────────────────────────────
+
+/// Explicit physical length. Legacy numeric APIs retain their documented units.
+class Length {
+    double points_ = 0;
+    explicit Length(double p) : points_(p) {
+        if (!std::isfinite(p) || std::abs(p) > 100000) throw std::invalid_argument("Invalid length");
+    }
+public:
+    Length() = default;
+    static Length pt(double n) { return Length(n); }
+    static Length cm(double n) { return Length(n * 72 / 2.54); }
+    static Length mm(double n) { return cm(n / 10); }
+    static Length inch(double n) { return pt(n * 72); }
+    static Length twips(int n) { return pt(n / 20.0); }
+    int dxa() const { return static_cast<int>(std::lround(points_ * 20)); }
+    int emu() const { return static_cast<int>(std::lround(points_ * 12700)); }
+};
+
+enum class Toggle { Inherit, Off, On };
+enum class BreakType { Line, Page, Column };
+enum class HeaderFooterType { Default, First, Even };
+enum class NumberFormat { Decimal, UpperRoman, LowerRoman, UpperLetter, LowerLetter, Bullet };
+enum class NoteRestart { Continuous, EachSection, EachPage };
+enum class FootnotePosition { PageBottom, BeneathText };
+enum class EndnotePosition { DocumentEnd, SectionEnd };
+enum class ReferenceKind { Text, Number, Page };
+enum class TargetKind { Bookmark, Paragraph, Heading, Figure, Table };
+enum class LineRule { Auto, Exact, AtLeast };
+enum class TabAlignment { Left, Center, Right, Decimal, Bar };
+enum class TabLeader { None, Dot, Hyphen, Underscore };
+enum class ImageWrap { Inline, Square, TopBottom, BehindText, InFrontOfText };
+enum class PositionRelative { Page, Margin, Column, Paragraph };
+enum class SourceType { Book, JournalArticle, ConferenceProceedings, Report, InternetSite, Misc };
+enum class PropertyType { String, Number, Boolean, Date };
+enum class SaveError { None, InvalidArgument, InvalidXml, InvalidReference, MissingResource, IoError };
+
+struct TargetId {
+    std::string name;
+    TargetKind kind = TargetKind::Bookmark;
+    explicit TargetId(const std::string& n = "", TargetKind k = TargetKind::Bookmark) : name(n), kind(k) {}
+};
+struct Diagnostic { SaveError code = SaveError::None; std::string part, message; };
+struct SaveOptions { bool missingImagesAreErrors = false; };
+struct SaveResult {
+    bool success = false;
+    Diagnostic error;
+    std::vector<Diagnostic> warnings;
+    explicit operator bool() const { return success; }
+};
+struct NoteOptions {
+    NumberFormat format = NumberFormat::Decimal;
+    int start = 1;
+    NoteRestart restart = NoteRestart::Continuous;
+    FootnotePosition footnotePosition = FootnotePosition::PageBottom;
+    EndnotePosition endnotePosition = EndnotePosition::DocumentEnd;
+};
+struct Author { std::string first, last, middle, corporate; };
+struct BibliographySource {
+    std::string tag, title;
+    SourceType type = SourceType::Book;
+    std::vector<Author> authors;
+    std::string year, month, day, publisher, city, journal, volume, issue, pages, doi, url;
+    std::string accessedYear, accessedMonth, accessedDay;
+    int language = 1033;
+};
+struct DocumentProperties {
+    std::string title, subject, creator, keywords, description, lastModifiedBy, language;
+};
+struct CustomProperty { std::string value; PropertyType type = PropertyType::String; };
+
+inline std::string numberFormatName(NumberFormat n) {
+    static const char* names[] = {"decimal", "upperRoman", "lowerRoman", "upperLetter", "lowerLetter", "bullet"};
+    return names[static_cast<int>(n)];
+}
 
 /// Page margin dimensions (cm).
 struct PageMargins {
@@ -65,6 +143,16 @@ struct Page {
     PageSize     size        = PageSize::A4;
     Orientation  orientation = Orientation::Portrait;
     PageMargins  margins;
+    int customWidth = 0, customHeight = 0;
+    Length headerDistance = Length::pt(36), footerDistance = Length::pt(36), gutter;
+
+    Page& setCustomSize(Length width, Length height) {
+        if (width.dxa() <= 0 || height.dxa() <= 0) throw std::invalid_argument("Page dimensions must be positive");
+        customWidth = width.dxa(); customHeight = height.dxa(); return *this;
+    }
+    Page& setHeaderDistance(Length n) { headerDistance = n; return *this; }
+    Page& setFooterDistance(Length n) { footerDistance = n; return *this; }
+    Page& setGutter(Length n) { gutter = n; return *this; }
 
     Page& setSize(PageSize s)               { size = s; return *this; }
     Page& setOrientation(Orientation o)     { orientation = o; return *this; }
@@ -128,6 +216,7 @@ inline std::string sectionBreakTypeToString(SectionBreakType t) {
         case SectionBreakType::Continuous: return "continuous";
         case SectionBreakType::EvenPage:   return "evenPage";
         case SectionBreakType::OddPage:    return "oddPage";
+        case SectionBreakType::NextColumn: return "nextColumn";
     }
     return "nextPage";
 }

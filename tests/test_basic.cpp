@@ -3,6 +3,7 @@
 #include <iostream>
 #include <filesystem>
 #include <unordered_map>
+#include "check.hpp"
 
 namespace xword {
 namespace internal {
@@ -164,9 +165,9 @@ int main() {
             auto parts = xword::internal::readZip("test_tpl_img_out.docx");
             const std::string& xml = parts["word/document.xml"];
             assert(xml.find("${photo}") == std::string::npos);
-            assert(xml.find("r:embed=\"rIdXword1\"") != std::string::npos);
+            assert(xml.find("r:embed=\"rId") != std::string::npos);
             assert(xml.find("xmlns:wp=") != std::string::npos);
-            assert(parts["word/_rels/document.xml.rels"].find("rIdXword1") != std::string::npos);
+            assert(parts["word/_rels/document.xml.rels"].find("relationships/image") != std::string::npos);
             bool hasMedia = false;
             for (const auto& kv : parts) {
                 if (kv.first.find("word/media/xword_") == 0) { hasMedia = true; break; }

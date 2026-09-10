@@ -6,6 +6,7 @@
 #include "Image.hpp"
 #include "Equation.hpp"
 #include "Types.hpp"
+#include "Section.hpp"
 #include <memory>
 #include <string>
 #include <vector>
@@ -100,7 +101,7 @@ public:
 
     // ── Headings ───────────────────────────────────────────
 
-    /// Add a numbered heading (level 1–6).
+    /// Add a numbered heading (level 1–9).
     Document& addHeading(const std::string& text, int level);
     Document& addHeading(const std::wstring& text, int level);
 
@@ -190,6 +191,27 @@ public:
     /// Call setPage() / setHeader() / setFooter() afterwards to customise
     /// the new section.
     Document& addSectionBreak(SectionBreakType type = SectionBreakType::NextPage);
+    Section& currentSection();
+    Section& addSection(SectionBreakType type = SectionBreakType::NextPage);
+    Document& addPageBreak();
+    Document& setEvenAndOddHeaders(bool on = true);
+    Paragraph& addHeadingParagraph(const std::string& text,int level,bool numbered = true);
+    Document& addFigureTOC(const std::string& title = "");
+    Document& addTableTOC(const std::string& title = "");
+    Document& registerParagraphStyle(const std::string& id,const ParagraphStyle& style);
+    Document& registerCharacterStyle(const std::string& id,const RunStyle& style,const std::string& basedOn = "");
+    Document& registerTableStyle(const std::string& id,const TableStyleDefinition& style);
+    Note& addFootnote();
+    int addEndnote(const std::string& text);
+    Note& addEndnote();
+    Note& footnote(int id);
+    Note& endnote(int id);
+    int addComment(const std::string& text,const std::string& author,const std::string& date = "");
+    Document& addSource(const BibliographySource& source);
+    Document& setBibliographyStyle(const std::string& style = "IEEE");
+    Document& addBibliography(const std::string& title = "");
+    Document& setProperties(const DocumentProperties& properties);
+    Document& setCustomProperty(const std::string& name,const CustomProperty& property);
 
     /// Enable different first page header/footer for the current section.
     Document& enableTitlePage();
@@ -281,24 +303,16 @@ public:
     /// Write the document to a .docx file.
     /// @return true on success.
     bool save(const std::string& filepath);
+    SaveResult saveDetailed(const std::string& filepath,const SaveOptions& options = SaveOptions());
 
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 
     // ── Internal build helpers ──────────────────
-    void        buildDocumentXml(std::string& xml);
-    std::string buildRelationshipsXml();
-    std::string buildContentTypesXml();
     std::string buildNumberingXml();
     std::string buildStylesXml();
-    std::string buildHeadingNumberingXml();
-    std::string buildFootnotesXml();
-    std::string buildHeaderXml();
-    std::string buildFooterXml();
     std::string renderXml(const std::string& xml);
-    std::string renderBlockXml(const std::string& key, int& drawingId, int maxWidthEmu);
-    bool        saveTemplate(const std::string& filepath);
 };
 
 } // namespace xword

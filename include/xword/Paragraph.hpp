@@ -2,6 +2,8 @@
 
 #include "Run.hpp"
 #include "Types.hpp"
+#include "Style.hpp"
+#include "Image.hpp"
 #include <memory>
 #include <string>
 
@@ -49,6 +51,34 @@ public:
     /// Insert a footnote reference mark (superscript number linking to
     /// the footnote whose content was added via Document::addFootnote).
     Paragraph& addFootnoteRef(int footnoteId);
+    Paragraph& addEndnoteRef(int id);
+    Paragraph& addSectionPageCount();
+    Paragraph& addBreak(BreakType type = BreakType::Line);
+    Paragraph& addTab();
+    Paragraph& addField(const std::string& instruction, const std::string& cached = "");
+    Paragraph& addHyperlink(const std::string& text, const std::string& url, const RunStyle& style = RunStyle());
+    Paragraph& startBookmark(const TargetId& target);
+    Paragraph& endBookmark(const TargetId& target);
+    Paragraph& setBookmark(const TargetId& target);
+    Paragraph& addReference(const TargetId& target, ReferenceKind kind = ReferenceKind::Text, bool hyperlink = true);
+    Paragraph& addCitation(const std::string& tag, const std::string& pages = "");
+    Paragraph& startComment(int id);
+    Paragraph& endComment(int id);
+    Image& addImage(const std::string& path);
+    Paragraph& setStyleId(const std::string& id);
+    Paragraph& setParagraphStyle(const ParagraphStyle& style);
+    Paragraph& setPageBreakBefore(bool on = true);
+    Paragraph& setKeepWithNext(bool on = true);
+    Paragraph& setKeepTogether(bool on = true);
+    Paragraph& setWidowControl(bool on = true);
+    Paragraph& setLeftIndent(Length n);
+    Paragraph& setRightIndent(Length n);
+    Paragraph& setHangingIndent(Length n);
+    Paragraph& setLineSpacing(double n, LineRule rule = LineRule::Auto);
+    Paragraph& addTabStop(const TabStop& tab);
+    Paragraph& setBorder(const Border& border);
+    Paragraph& setShading(const std::string& color);
+    Paragraph& setNumbering(int id, int level = 0);
     /// @}
 
     /// @{

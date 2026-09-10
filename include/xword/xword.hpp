@@ -8,3 +8,6 @@
 #include "Equation.hpp"
 #include "Types.hpp"
 #include "Format.hpp"
+#include "Style.hpp"
+#include "Section.hpp"
+#include "Content.hpp"

@@ -1,47 +1,21 @@
 #pragma once
-
-#include "Types.hpp"
-#include <memory>
-#include <string>
-
+#include "Paragraph.hpp"
 namespace xword {
-
-/// A bullet or ordered (numbered) list.
-///
-/// Created via Document::addBulletList() or Document::addOrderedList().
-/// Items are added with addItem() and support indentation levels.
 class BulletList {
 public:
-    BulletList(ListType type = ListType::Bullet);
-    ~BulletList();
-    BulletList(BulletList&&) noexcept;
-    BulletList& operator=(BulletList&&) noexcept;
-
-    /// @{
-    /// Builder methods (chainable).
-
-    /// Append an item to the list.
+    explicit BulletList(ListType type = ListType::Bullet); ~BulletList();
+    BulletList(BulletList&&) noexcept; BulletList& operator=(BulletList&&) noexcept;
     BulletList& addItem(const std::string& text);
-
-    /// Set the nesting level (0 = top level).
+    Paragraph& addItemParagraph(const std::string& text = "",int level = -1);
     BulletList& setLevel(int level);
-
-    /// Assign a numbering definition ID.
     BulletList& setNumId(int id);
-    /// @}
-
-    /// Build OOXML list XML (internal use).
-    std::string toXml() const;
-
-    /// The numbering definition ID in use.
+    BulletList& setStart(int start);
+    BulletList& setFormat(NumberFormat format,const std::string& text = "%1.");
+    BulletList& continueFrom(const BulletList& previous);
     int numId() const;
-
-    /// Bullet or ordered.
     ListType type() const;
-
+    std::string toXml() const;
 private:
-    struct Impl;
-    std::unique_ptr<Impl> m_impl;
+    struct Impl; std::unique_ptr<Impl> m_impl;
 };
-
-} // namespace xword
+}

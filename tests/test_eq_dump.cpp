@@ -2,6 +2,7 @@
 #include <cassert>
 #include <iostream>
 #include <string>
+#include "check.hpp"
 
 static void dump(const char* name, const std::string& latex, xword::EquationMode m) {
     xword::Equation eq(latex, m);

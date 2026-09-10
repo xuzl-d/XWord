@@ -12,6 +12,11 @@ build/
 
 # Python cache
 __pycache__/
+python/xword/*.pyd
+python/xword/*.so
+python/xword/*.dll
+tools/OpenXmlValidator/bin/
+tools/OpenXmlValidator/obj/
 
 # Debug symbols
 *.pdb
