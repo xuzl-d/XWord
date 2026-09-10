@@ -246,6 +246,7 @@ PYBIND11_MODULE(_native, m) {
         .def("set_num_id", &BulletList::setNumId,
              py::return_value_policy::reference_internal)
         .def("num_id", &BulletList::numId)
+        .def("type", &BulletList::type)
         .def("to_xml", &BulletList::toXml);
 
     // ═══════════════════════════════════════════════════════════
@@ -368,6 +369,41 @@ PYBIND11_MODULE(_native, m) {
                  return self.set(key, v, precision);
              }, py::return_value_policy::reference_internal,
              py::arg("key"), py::arg("value"), py::arg("precision") = 2)
+        .def("set_var",
+             [](Document& self, const std::string& key, Paragraph para) -> Document& {
+                 return self.set(key, std::move(para));
+             }, py::return_value_policy::reference_internal)
+        .def("set_var",
+             [](Document& self, const std::string& key, Table table) -> Document& {
+                 return self.set(key, std::move(table));
+             }, py::return_value_policy::reference_internal)
+        .def("set_var",
+             [](Document& self, const std::string& key, Image image) -> Document& {
+                 return self.set(key, std::move(image));
+             }, py::return_value_policy::reference_internal)
+        .def("set_var",
+             [](Document& self, const std::string& key, BulletList list) -> Document& {
+                 return self.set(key, std::move(list));
+             }, py::return_value_policy::reference_internal)
+        .def("set_var",
+             [](Document& self, const std::string& key, Equation eq) -> Document& {
+                 return self.set(key, std::move(eq));
+             }, py::return_value_policy::reference_internal)
+        .def("set_paragraph", &Document::setParagraph,
+             py::return_value_policy::reference_internal,
+             py::arg("key"), py::arg("text") = "")
+        .def("set_table", &Document::setTable,
+             py::return_value_policy::reference_internal)
+        .def("set_image", &Document::setImage,
+             py::return_value_policy::reference_internal)
+        .def("set_bullet_list", &Document::setBulletList,
+             py::return_value_policy::reference_internal)
+        .def("set_ordered_list", &Document::setOrderedList,
+             py::return_value_policy::reference_internal)
+        .def("set_equation", &Document::setEquation,
+             py::return_value_policy::reference_internal)
+        .def("set_display_equation", &Document::setDisplayEquation,
+             py::return_value_policy::reference_internal)
         // Save
         .def("save", &Document::save);
 }

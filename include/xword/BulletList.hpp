@@ -36,6 +36,9 @@ public:
     /// The numbering definition ID in use.
     int numId() const;
 
+    /// Bullet or ordered.
+    ListType type() const;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

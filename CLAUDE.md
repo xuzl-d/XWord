@@ -44,7 +44,7 @@ Each public class has its own `.cpp` with the `Impl` struct defined there. `src/
 
 ### Template engine
 
-`Document::open("template.docx")` loads an existing .docx as a template. `set(key, value)` fills `${key}` placeholders; `{%if key%}` / `{%else%}` / `{%endif%}` control conditional blocks. No nested ifs. Truth is `"false"`/`"0"`/`""` → false, else true. The template XML is parsed and rewritten, then re-zipped on save.
+`Document::open("template.docx")` loads an existing .docx as a template. Scalar `set(key, value)` fills `${key}` in-text. Block overloads (`set(key, Table)`, `setParagraph` / `setTable` / `setImage` / `setBulletList` / `setOrderedList` / `setEquation`) replace the placeholder's entire paragraph — keep `${key}` on its own line. `{%if key%}` / `{%else%}` / `{%endif%}` control conditionals (no nested ifs). Truth is `"false"`/`"0"`/`""` → false; block content for a key is always true. Headers/footers get scalar replacement only. The template XML is parsed and rewritten, then re-zipped on save.
 
 ### Python package (`python/xword/`)
 

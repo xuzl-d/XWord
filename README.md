@@ -85,18 +85,32 @@ doc.set("detail", true);
 doc.save("output.docx");
 ```
 
+块级占位符（表格、图片、段落等）须独占一段：
+
+```cpp
+// 模板中：${summary}  单独成段
+Document doc;
+doc.open("template.docx");
+doc.setParagraph("summary", "替换后的段落");
+auto& tbl = doc.setTable("data", 2, 2);
+tbl.cell(0, 0).addParagraph("A");
+doc.setImage("photo", "photo.png").setCaption("现场照片");
+doc.setBulletList("items").addItem("甲").addItem("乙");
+doc.save("output.docx");
+```
+
 **占位符语法**
 
 | 标记 | 含义 |
 |---|---|
-| `${key}` | 替换为 set() 设置的 value |
+| `${key}` | 标量 `set()` 做段内替换；块级 `set(Table/Image/…)` / `setTable` 等替换整段 |
 | `{%if key%}` | 条件开始——独占一段 |
 | `{%else%}` | else 分支——独占一段（可选） |
 | `{%endif%}` | 条件结束——独占一段 |
 
-**真值判断**：`"false"` / `"0"` / `""` / key 不存在 → false；其余 → true
+**真值判断**：`"false"` / `"0"` / `""` / key 不存在 → false；块级内容视为 true；其余标量 → true
 
-条件块可跨多段（包括表格）。当前不支持嵌套 `{%if%}`。
+条件块可跨多段（包括表格）。当前不支持嵌套 `{%if%}`。页眉页脚仅做标量替换。
 
 ## 作为外部依赖使用
 

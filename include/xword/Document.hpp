@@ -42,12 +42,16 @@ namespace xword {
 ///     doc.save("output.docx");
 ///
 /// Template syntax:
-///   - `${key}`          — variable placeholder (replaced by set() value)
+///   - `${key}`          — variable placeholder (scalar or block via set())
 ///   - `{%if key%}`      — conditional block start (standalone paragraph)
 ///   - `{%else%}`        — else branch (standalone paragraph, optional)
 ///   - `{%endif%}`       — conditional block end (standalone paragraph)
 ///
-/// Condition keys are truthy unless the value is "false", "0", or "".
+/// Scalar `set(key, string)` replaces `${key}` in-text.  Block overloads
+/// (`set(key, Table)`, `setParagraph`, `setTable`, `setImage`, …) replace
+/// the placeholder's entire paragraph — keep `${key}` on its own line.
+/// Condition keys are truthy unless the value is "false", "0", or ""
+/// (block content for a key is always truthy).
 ///
 class Document {
 public:
@@ -233,7 +237,7 @@ public:
     /// @return false if the file could not be opened.
     bool open(const std::string& filepath);
 
-    /// Store a template variable value.
+    /// Store a template variable value (in-text replacement of `${key}`).
     Document& set(const std::string& key, const std::string& value);
 
     /// @{
@@ -243,6 +247,30 @@ public:
     Document& set(const std::string& key, int    v) { return set(key, std::to_string(v)); }
     /// Store a double with a specified number of decimal places.
     Document& set(const std::string& key, double v, int precision = 2);
+    /// @}
+
+    /// @{
+    /// Replace `${key}` with block-level content (paragraph, table, image,
+    /// list, or equation).  The placeholder's enclosing paragraph is replaced
+    /// wholesale — put `${key}` on its own line in the template.
+    /// Repeated calls for the same key append additional blocks.
+    Document& set(const std::string& key, Paragraph para);
+    Document& set(const std::string& key, Table table);
+    Document& set(const std::string& key, Image image);
+    Document& set(const std::string& key, BulletList list);
+    Document& set(const std::string& key, Equation eq);
+    /// @}
+
+    /// @{
+    /// Factory overloads: create block content owned by the document and
+    /// return a reference for chaining (same style as addParagraph / addTable).
+    Paragraph&  setParagraph(const std::string& key, const std::string& text = "");
+    Table&      setTable(const std::string& key, int rows, int cols);
+    Image&      setImage(const std::string& key, const std::string& filepath);
+    BulletList& setBulletList(const std::string& key);
+    BulletList& setOrderedList(const std::string& key);
+    Equation&   setEquation(const std::string& key, const std::string& latex);
+    Equation&   setDisplayEquation(const std::string& key, const std::string& latex);
     /// @}
 
     /// Prevent accidental implicit conversions (linker error if used).
@@ -269,6 +297,7 @@ private:
     std::string buildHeaderXml();
     std::string buildFooterXml();
     std::string renderXml(const std::string& xml);
+    std::string renderBlockXml(const std::string& key, int& drawingId, int maxWidthEmu);
     bool        saveTemplate(const std::string& filepath);
 };
 

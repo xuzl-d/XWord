@@ -56,4 +56,8 @@ int BulletList::numId() const {
     return m_impl->m_numId;
 }
 
+ListType BulletList::type() const {
+    return m_impl->m_type;
+}
+
 } // namespace xword

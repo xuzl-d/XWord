@@ -27,6 +27,12 @@ int main() {
         gen.addParagraph("{%endif%}");
 
         gen.addParagraph();
+        gen.addParagraph("数据表：");
+        gen.addParagraph("${dataTable}");
+        gen.addParagraph("备注：");
+        gen.addParagraph("${notes}");
+
+        gen.addParagraph();
         gen.addParagraph("此致");
         gen.addParagraph("敬礼");
 
@@ -58,6 +64,13 @@ int main() {
         doc.set("amount", "128.50");
         doc.set("ratio", 45.67, 1);   // double with 1 decimal
         doc.set("showDetail", true);  // enable detail block
+        auto& tbl = doc.setTable("dataTable", 2, 2);
+        tbl.setBorderStyle(TableStyle::Grid);
+        tbl.cell(0, 0).addParagraph("项目");
+        tbl.cell(0, 1).addParagraph("金额");
+        tbl.cell(1, 0).addParagraph("合计");
+        tbl.cell(1, 1).addParagraph("128.50");
+        doc.setParagraph("notes", "以上数据由模板块级占位符注入。");
 
         if (!doc.save("__rendered_true.docx")) {
             std::cerr << "FAILED to render true branch\n";
@@ -79,6 +92,8 @@ int main() {
         doc.set("amount", "0.00");
         doc.set("ratio", 0.0, 1);
         doc.set("showDetail", false); // hide detail block
+        doc.setParagraph("dataTable", "（无数据）");
+        doc.setParagraph("notes", "摘要模式。");
 
         if (!doc.save("__rendered_false.docx")) {
             std::cerr << "FAILED to render false branch\n";

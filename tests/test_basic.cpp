@@ -2,6 +2,13 @@
 #include <cassert>
 #include <iostream>
 #include <filesystem>
+#include <unordered_map>
+
+namespace xword {
+namespace internal {
+std::unordered_map<std::string, std::string> readZip(const std::string& filepath);
+}
+}
 
 int main() {
     using namespace xword;
@@ -100,12 +107,87 @@ int main() {
         std::cout << "Test 6f passed: Greek symbols\n";
     }
 
+    // Test 7: Template block placeholders (paragraph / table / list)
+    {
+        {
+            Document gen;
+            gen.addParagraph("Hello ${name}");
+            gen.addParagraph("${block}");
+            gen.addParagraph("${tbl}");
+            gen.addParagraph("${items}");
+            assert(gen.save("test_tpl_src.docx"));
+        }
+
+        Document doc;
+        assert(doc.open("test_tpl_src.docx"));
+        doc.set("name", "World");
+        doc.setParagraph("block", "injected paragraph");
+        auto& tbl = doc.setTable("tbl", 2, 2);
+        tbl.setBorderStyle(TableStyle::Grid);
+        tbl.cell(0, 0).addParagraph("A");
+        tbl.cell(0, 1).addParagraph("B");
+        tbl.cell(1, 0).addParagraph("C");
+        tbl.cell(1, 1).addParagraph("D");
+        doc.setBulletList("items").addItem("one").addItem("two");
+        assert(doc.save("test_tpl_out.docx"));
+
+        auto parts = xword::internal::readZip("test_tpl_out.docx");
+        assert(parts.count("word/document.xml"));
+        const std::string& xml = parts["word/document.xml"];
+        assert(xml.find("${block}") == std::string::npos);
+        assert(xml.find("${tbl}") == std::string::npos);
+        assert(xml.find("${items}") == std::string::npos);
+        assert(xml.find("Hello World") != std::string::npos);
+        assert(xml.find("injected paragraph") != std::string::npos);
+        assert(xml.find("<w:tbl>") != std::string::npos);
+        assert(xml.find("<w:numId w:val=\"100\"/>") != std::string::npos);
+        assert(parts.count("word/numbering.xml"));
+        assert(parts["word/numbering.xml"].find("w:numId=\"100\"") != std::string::npos);
+        std::cout << "Test 7 passed: Template block placeholders\n";
+    }
+
+    // Test 8: Template image placeholder + media/rels
+    {
+        namespace fs = std::filesystem;
+        fs::path img = fs::path(__FILE__).parent_path().parent_path() / "examples" / "res" / "image8.png";
+        if (fs::exists(img)) {
+            {
+                Document gen;
+                gen.addParagraph("${photo}");
+                assert(gen.save("test_tpl_img_src.docx"));
+            }
+            Document doc;
+            assert(doc.open("test_tpl_img_src.docx"));
+            doc.setImage("photo", img.u8string()).setCaption("cap");
+            assert(doc.save("test_tpl_img_out.docx"));
+
+            auto parts = xword::internal::readZip("test_tpl_img_out.docx");
+            const std::string& xml = parts["word/document.xml"];
+            assert(xml.find("${photo}") == std::string::npos);
+            assert(xml.find("r:embed=\"rIdXword1\"") != std::string::npos);
+            assert(xml.find("xmlns:wp=") != std::string::npos);
+            assert(parts["word/_rels/document.xml.rels"].find("rIdXword1") != std::string::npos);
+            bool hasMedia = false;
+            for (const auto& kv : parts) {
+                if (kv.first.find("word/media/xword_") == 0) { hasMedia = true; break; }
+            }
+            assert(hasMedia);
+            std::cout << "Test 8 passed: Template image placeholder\n";
+        } else {
+            std::cout << "Test 8 skipped: examples/res/image8.png not found\n";
+        }
+    }
+
     // Cleanup
     std::filesystem::remove("test_basic.docx");
     std::filesystem::remove("test_richtext.docx");
     std::filesystem::remove("test_table.docx");
     std::filesystem::remove("test_page.docx");
     std::filesystem::remove("test_lists.docx");
+    std::filesystem::remove("test_tpl_src.docx");
+    std::filesystem::remove("test_tpl_out.docx");
+    std::filesystem::remove("test_tpl_img_src.docx");
+    std::filesystem::remove("test_tpl_img_out.docx");
 
     std::cout << "All tests passed!\n";
     return 0;

@@ -32,6 +32,22 @@ struct SectionInfo {
     bool             titlePg = false;
 };
 
+struct TemplateBlock {
+    ElementType type = ElementType::Paragraph;
+    Paragraph*  paragraph = nullptr;
+    Image*      image = nullptr;
+    Table*      table = nullptr;
+    BulletList* bulletList = nullptr;
+    Equation*   equation = nullptr;
+};
+
+struct PendingMedia {
+    std::string rId;
+    std::string relTarget;   // e.g. media/xword_1.png
+    std::string srcPath;
+    std::string contentType;
+};
+
 struct Document::Impl {
     std::vector<std::unique_ptr<Paragraph>>   m_paragraphs;
     std::vector<std::unique_ptr<Image>>       m_images;
@@ -64,6 +80,11 @@ struct Document::Impl {
     int                         m_curSection = 0; // index into m_sections
     bool            m_isTemplate = false;
     std::unordered_map<std::string, std::string> m_templateParts, m_templateVars;
+    std::unordered_map<std::string, std::vector<TemplateBlock>> m_templateBlocks;
+    std::vector<PendingMedia> m_pendingMedia;
+    int             m_nextTplMedia = 1;
+    int             m_nextTplListId = 101;
+    bool            m_tplNeedNumbering = false;
 };
 
 // ---- Document ----
@@ -1362,10 +1383,11 @@ std::vector<Marker> findMarkers(const std::string& body) {
             while (search > 0) {
                 pStart = body.rfind("<w:p", search);
                 if (pStart == std::string::npos) break;
-                // distinguish <w:p (para) from <w:pPr (para properties)
-                if (pStart + 5 <= body.size() && body[pStart + 4] == 'P') {
+                // <w:p> / <w:p …> only — skip <w:pPr>, <w:pStyle>, …
+                char c = (pStart + 4 < body.size()) ? body[pStart + 4] : '\0';
+                if (c != '>' && c != ' ' && c != '/') {
                     search = pStart - 1;
-                    continue; // skip <w:pPr
+                    continue;
                 }
                 break;
             }
@@ -1426,6 +1448,11 @@ bool Document::open(const std::string& filepath) {
     m_impl->m_templateParts = std::move(parts);
     m_impl->m_isTemplate = true;
     m_impl->m_templateVars.clear();
+    m_impl->m_templateBlocks.clear();
+    m_impl->m_pendingMedia.clear();
+    m_impl->m_nextTplMedia = 1;
+    m_impl->m_nextTplListId = 101;
+    m_impl->m_tplNeedNumbering = false;
     return true;
 }
 
@@ -1440,6 +1467,473 @@ Document& Document::set(const std::string& key, double v, int precision) {
     return set(key, std::string(buf));
 }
 
+namespace {
+
+std::string drawingXml(const std::string& rId, int drawingId,
+                       int widthEmu, int heightEmu, Alignment align, bool hasAlign)
+{
+    std::string cx = std::to_string(widthEmu);
+    std::string cy = std::to_string(heightEmu);
+    std::string id = std::to_string(drawingId);
+    std::string xml;
+    xml += "<w:p>";
+    xml += "<w:pPr>";
+    if (hasAlign)
+        xml += "<w:jc w:val=\"" + alignmentToString(align) + "\"/>";
+    xml += "<w:ind w:firstLine=\"0\"/>";
+    xml += "</w:pPr>";
+    xml += "<w:r>"
+           "<w:drawing>"
+           "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
+           "<wp:extent cx=\"" + cx + "\" cy=\"" + cy + "\"/>"
+           "<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>"
+           "<wp:docPr id=\"" + id + "\" name=\"Picture " + id + "\"/>"
+           "<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" noChangeAspect=\"1\"/></wp:cNvGraphicFramePr>"
+           "<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">"
+           "<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
+           "<pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
+           "<pic:nvPicPr>"
+           "<pic:cNvPr id=\"" + id + "\" name=\"Picture " + id + "\"/>"
+           "<pic:cNvPicPr/>"
+           "</pic:nvPicPr>"
+           "<pic:blipFill>"
+           "<a:blip r:embed=\"" + rId + "\"/>"
+           "<a:stretch><a:fillRect/></a:stretch>"
+           "</pic:blipFill>"
+           "<pic:spPr>"
+           "<a:xfrm>"
+           "<a:off x=\"0\" y=\"0\"/>"
+           "<a:ext cx=\"" + cx + "\" cy=\"" + cy + "\"/>"
+           "</a:xfrm>"
+           "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
+           "</pic:spPr>"
+           "</pic:pic>"
+           "</a:graphicData>"
+           "</a:graphic>"
+           "</wp:inline>"
+           "</w:drawing>"
+           "</w:r>"
+           "</w:p>";
+    return xml;
+}
+
+std::string captionPara(const std::string& text) {
+    return "<w:p>"
+           "<w:pPr><w:spacing w:after=\"0\" w:before=\"0\"/>"
+           "<w:jc w:val=\"center\"/><w:ind w:firstLine=\"0\"/></w:pPr>"
+           "<w:r><w:rPr><w:b/></w:rPr>"
+           "<w:t xml:space=\"preserve\">" + xmlEscape(text) + "</w:t>"
+           "</w:r></w:p>";
+}
+
+void ensureDrawingNamespaces(std::string& xml) {
+    auto addNs = [&](const char* attr) {
+        if (xml.find(attr) != std::string::npos) return;
+        size_t tag = xml.find("<w:document");
+        if (tag == std::string::npos) return;
+        size_t gt = xml.find('>', tag);
+        if (gt == std::string::npos) return;
+        xml.insert(gt, std::string(" ") + attr);
+    };
+    addNs("xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\"");
+    addNs("xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"");
+    addNs("xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"");
+    addNs("xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"");
+    addNs("xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\"");
+}
+
+int parseContentWidthEmu(const std::string& docXml) {
+    // Default A4 portrait with 2.54 cm margins ≈ 6.5 in content width.
+    constexpr int kDefault = 9144000;
+    size_t pgSz = docXml.find("<w:pgSz");
+    size_t pgMar = docXml.find("<w:pgMar");
+    if (pgSz == std::string::npos || pgMar == std::string::npos) return kDefault;
+
+    auto attrInt = [](const std::string& tag, const char* name, int fallback) {
+        std::string needle = std::string(name) + "=\"";
+        size_t p = tag.find(needle);
+        if (p == std::string::npos) return fallback;
+        p += needle.size();
+        size_t e = tag.find('"', p);
+        if (e == std::string::npos) return fallback;
+        return std::atoi(tag.substr(p, e - p).c_str());
+    };
+
+    size_t pgSzEnd = docXml.find('>', pgSz);
+    size_t pgMarEnd = docXml.find('>', pgMar);
+    if (pgSzEnd == std::string::npos || pgMarEnd == std::string::npos) return kDefault;
+
+    std::string szTag = docXml.substr(pgSz, pgSzEnd - pgSz);
+    std::string marTag = docXml.substr(pgMar, pgMarEnd - pgMar);
+    int w = attrInt(szTag, "w:w", 11906);
+    int left = attrInt(marTag, "w:left", 1440);
+    int right = attrInt(marTag, "w:right", 1440);
+    int contentTwips = w - left - right;
+    if (contentTwips <= 0) return kDefault;
+    return contentTwips * 635; // twips → EMU
+}
+
+bool relsHasNumbering(const std::string& relsXml) {
+    return relsXml.find("/relationships/numbering") != std::string::npos;
+}
+
+std::string numberingStubXml() {
+    std::string xml;
+    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+          "<w:numbering xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+          "</w:numbering>";
+    return xml;
+}
+
+std::string mergeNumberingXml(const std::string& existing, int nextTplListId) {
+    std::string xml = existing.empty() ? numberingStubXml() : existing;
+    size_t close = xml.rfind("</w:numbering>");
+    if (close == std::string::npos) return xml;
+
+    auto lvlBlock = [](const char* numFmt, const std::string& lvlText) {
+        std::string out;
+        for (int i = 0; i < 9; ++i) {
+            std::string text = lvlText;
+            if (text.find("%i") != std::string::npos)
+                text = "%" + std::to_string(i + 1) + ".";
+            out += "<w:lvl w:ilvl=\"" + std::to_string(i) + "\" w:tplc=\"" + std::to_string(i) + "\">"
+                   "<w:start w:val=\"1\"/>"
+                   "<w:numFmt w:val=\"" + std::string(numFmt) + "\"/>"
+                   "<w:lvlText w:val=\"" + text + "\"/>"
+                   "<w:lvlJc w:val=\"left\"/>"
+                   "<w:pPr>"
+                   "<w:tabs><w:tab w:val=\"num\" w:pos=\"" + std::to_string((i + 1) * 420) + "\"/></w:tabs>"
+                   "<w:ind w:left=\"" + std::to_string((i + 1) * 420) + "\" w:hanging=\"420\"/>"
+                   "</w:pPr>"
+                   "<w:rPr><w:rFonts w:hint=\"default\"/></w:rPr>"
+                   "</w:lvl>";
+        }
+        return out;
+    };
+
+    std::string extra;
+    if (xml.find("w:abstractNumId=\"9000\"") == std::string::npos) {
+        extra += "<w:abstractNum w:abstractNumId=\"9000\">"
+                 "<w:multiLevelType w:val=\"hybridMultilevel\"/>"
+                 + lvlBlock("bullet", "\xC2\xB7") +
+                 "</w:abstractNum>";
+        extra += "<w:abstractNum w:abstractNumId=\"9001\">"
+                 "<w:multiLevelType w:val=\"hybridMultilevel\"/>"
+                 + lvlBlock("decimal", "%i") +
+                 "</w:abstractNum>";
+    }
+    if (xml.find("w:numId=\"100\"") == std::string::npos) {
+        extra += "<w:num w:numId=\"100\"><w:abstractNumId w:val=\"9000\"/></w:num>";
+    }
+    for (int id = 101; id < nextTplListId; ++id) {
+        std::string needle = "w:numId=\"" + std::to_string(id) + "\"";
+        if (xml.find(needle) == std::string::npos) {
+            extra += "<w:num w:numId=\"" + std::to_string(id) + "\">"
+                     "<w:abstractNumId w:val=\"9001\"/>"
+                     "<w:lvlOverride w:ilvl=\"0\">"
+                     "<w:startOverride w:val=\"1\"/>"
+                     "</w:lvlOverride>"
+                     "</w:num>";
+        }
+    }
+    xml.insert(close, extra);
+    return xml;
+}
+
+std::string patchRels(const std::string& relsXml,
+                      const std::vector<PendingMedia>& media,
+                      bool addNumbering)
+{
+    std::string xml = relsXml;
+    if (xml.empty()) {
+        xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+              "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+              "</Relationships>";
+    }
+    size_t close = xml.rfind("</Relationships>");
+    if (close == std::string::npos) return xml;
+
+    std::string extra;
+    for (const auto& m : media) {
+        extra += "<Relationship Id=\"" + m.rId + "\" "
+                 "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" "
+                 "Target=\"" + xmlEscape(m.relTarget) + "\"/>";
+    }
+    if (addNumbering && !relsHasNumbering(xml)) {
+        extra += "<Relationship Id=\"rIdXwordNum\" "
+                 "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering\" "
+                 "Target=\"numbering.xml\"/>";
+    }
+    xml.insert(close, extra);
+    return xml;
+}
+
+std::string patchContentTypes(const std::string& ctXml,
+                              const std::vector<PendingMedia>& media,
+                              bool addNumbering)
+{
+    std::string xml = ctXml;
+    if (xml.empty()) return xml;
+    size_t close = xml.rfind("</Types>");
+    if (close == std::string::npos) return xml;
+
+    std::string extra;
+    if (addNumbering && xml.find("/word/numbering.xml") == std::string::npos) {
+        extra += "<Override PartName=\"/word/numbering.xml\" "
+                 "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml\"/>";
+    }
+    for (const auto& m : media) {
+        extra += "<Override PartName=\"/word/" + m.relTarget + "\" "
+                 "ContentType=\"" + m.contentType + "\"/>";
+    }
+    xml.insert(close, extra);
+    return xml;
+}
+
+} // anonymous namespace
+
+Document& Document::set(const std::string& key, Paragraph para) {
+    auto p = std::make_unique<Paragraph>(std::move(para));
+    TemplateBlock b;
+    b.type = ElementType::Paragraph;
+    b.paragraph = p.get();
+    m_impl->m_paragraphs.push_back(std::move(p));
+    m_impl->m_templateBlocks[key].push_back(b);
+    return *this;
+}
+
+Document& Document::set(const std::string& key, Table table) {
+    auto t = std::make_unique<Table>(std::move(table));
+    TemplateBlock b;
+    b.type = ElementType::Table;
+    b.table = t.get();
+    m_impl->m_tables.push_back(std::move(t));
+    m_impl->m_templateBlocks[key].push_back(b);
+    return *this;
+}
+
+Document& Document::set(const std::string& key, Image image) {
+    auto img = std::make_unique<Image>(std::move(image));
+    namespace fs = std::filesystem;
+    std::string filename = fs::u8path(img->filepath()).filename().u8string();
+    if (!isAsciiSafePartName(filename)) {
+        std::string ext = fs::u8path(img->filepath()).extension().u8string();
+        if (!isAsciiSafePartName(ext)) ext.clear();
+        img->setMediaName("image" + std::to_string(m_impl->m_images.size() + 1) + ext);
+    }
+    TemplateBlock b;
+    b.type = ElementType::Image;
+    b.image = img.get();
+    m_impl->m_images.push_back(std::move(img));
+    m_impl->m_templateBlocks[key].push_back(b);
+    return *this;
+}
+
+Document& Document::set(const std::string& key, BulletList list) {
+    auto lst = std::make_unique<BulletList>(std::move(list));
+    if (lst->numId() <= 0) {
+        if (lst->type() == ListType::Bullet)
+            lst->setNumId(100);
+        else
+            lst->setNumId(m_impl->m_nextTplListId++);
+    }
+    m_impl->m_tplNeedNumbering = true;
+    TemplateBlock b;
+    b.type = ElementType::BulletList;
+    b.bulletList = lst.get();
+    m_impl->m_lists.push_back(std::move(lst));
+    m_impl->m_templateBlocks[key].push_back(b);
+    return *this;
+}
+
+Document& Document::set(const std::string& key, Equation eq) {
+    auto e = std::make_unique<Equation>(std::move(eq));
+    TemplateBlock b;
+    b.type = ElementType::Equation;
+    b.equation = e.get();
+    m_impl->m_equations.push_back(std::move(e));
+    m_impl->m_templateBlocks[key].push_back(b);
+    return *this;
+}
+
+Paragraph& Document::setParagraph(const std::string& key, const std::string& text) {
+    auto p = std::make_unique<Paragraph>();
+    if (m_impl->m_bodyRunStyle.hasFormatting())
+        p->setStyle(m_impl->m_bodyRunStyle);
+    if (!text.empty())
+        p->addRun(text);
+    if (m_impl->m_defaultIndent > 0)
+        p->setFirstLineIndent(m_impl->m_defaultIndent);
+    Paragraph* ptr = p.get();
+    m_impl->m_paragraphs.push_back(std::move(p));
+    TemplateBlock b;
+    b.type = ElementType::Paragraph;
+    b.paragraph = ptr;
+    m_impl->m_templateBlocks[key].push_back(b);
+    return *ptr;
+}
+
+Table& Document::setTable(const std::string& key, int rows, int cols) {
+    auto tbl = std::make_unique<Table>(rows, cols);
+    Table* ptr = tbl.get();
+    if (m_impl->m_tableRunStyle.hasFormatting())
+        ptr->setStyle(m_impl->m_tableRunStyle);
+    m_impl->m_tables.push_back(std::move(tbl));
+    TemplateBlock b;
+    b.type = ElementType::Table;
+    b.table = ptr;
+    m_impl->m_templateBlocks[key].push_back(b);
+    return *ptr;
+}
+
+Image& Document::setImage(const std::string& key, const std::string& filepath) {
+    Image img(filepath);
+    set(key, std::move(img));
+    return *m_impl->m_templateBlocks[key].back().image;
+}
+
+BulletList& Document::setBulletList(const std::string& key) {
+    auto lst = std::make_unique<BulletList>(ListType::Bullet);
+    lst->setNumId(100);
+    m_impl->m_tplNeedNumbering = true;
+    BulletList* ptr = lst.get();
+    m_impl->m_lists.push_back(std::move(lst));
+    TemplateBlock b;
+    b.type = ElementType::BulletList;
+    b.bulletList = ptr;
+    m_impl->m_templateBlocks[key].push_back(b);
+    return *ptr;
+}
+
+BulletList& Document::setOrderedList(const std::string& key) {
+    auto lst = std::make_unique<BulletList>(ListType::Ordered);
+    lst->setNumId(m_impl->m_nextTplListId++);
+    m_impl->m_tplNeedNumbering = true;
+    BulletList* ptr = lst.get();
+    m_impl->m_lists.push_back(std::move(lst));
+    TemplateBlock b;
+    b.type = ElementType::BulletList;
+    b.bulletList = ptr;
+    m_impl->m_templateBlocks[key].push_back(b);
+    return *ptr;
+}
+
+Equation& Document::setEquation(const std::string& key, const std::string& latex) {
+    auto eq = std::make_unique<Equation>(latex, EquationMode::Inline);
+    if (m_impl->m_bodyRunStyle.hasFormatting())
+        eq->setStyle(m_impl->m_bodyRunStyle);
+    Equation* ptr = eq.get();
+    m_impl->m_equations.push_back(std::move(eq));
+    TemplateBlock b;
+    b.type = ElementType::Equation;
+    b.equation = ptr;
+    m_impl->m_templateBlocks[key].push_back(b);
+    return *ptr;
+}
+
+Equation& Document::setDisplayEquation(const std::string& key, const std::string& latex) {
+    auto eq = std::make_unique<Equation>(latex, EquationMode::Display);
+    if (m_impl->m_displayEquationStyle.hasFormatting())
+        eq->setStyle(m_impl->m_displayEquationStyle);
+    else if (m_impl->m_bodyRunStyle.hasFormatting())
+        eq->setStyle(m_impl->m_bodyRunStyle);
+    Equation* ptr = eq.get();
+    m_impl->m_equations.push_back(std::move(eq));
+    TemplateBlock b;
+    b.type = ElementType::Equation;
+    b.equation = ptr;
+    m_impl->m_templateBlocks[key].push_back(b);
+    return *ptr;
+}
+
+std::string Document::renderBlockXml(const std::string& key, int& drawingId, int maxWidthEmu) {
+    auto it = m_impl->m_templateBlocks.find(key);
+    if (it == m_impl->m_templateBlocks.end()) return {};
+
+    namespace fs = std::filesystem;
+    auto probe = [](const std::string& p) {
+        if (p.empty()) return false;
+        std::error_code ec;
+        return fs::is_regular_file(fs::u8path(p), ec);
+    };
+    auto registerMedia = [&](const std::string& srcPath, const std::string& extHint) -> std::string {
+        std::string rId = "rIdXword" + std::to_string(m_impl->m_nextTplMedia);
+        std::string ext = extHint;
+        if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
+        if (ext.empty()) ext = "png";
+        std::string mediaName = "xword_" + std::to_string(m_impl->m_nextTplMedia) + "." + ext;
+        ++m_impl->m_nextTplMedia;
+        PendingMedia pm;
+        pm.rId = rId;
+        pm.relTarget = "media/" + mediaName;
+        pm.srcPath = srcPath;
+        pm.contentType = imageContentType(ext);
+        m_impl->m_pendingMedia.push_back(pm);
+        return rId;
+    };
+
+    std::string xml;
+    for (const auto& b : it->second) {
+        switch (b.type) {
+            case ElementType::Paragraph:
+                xml += b.paragraph->toXml();
+                break;
+            case ElementType::Table: {
+                Table* tbl = b.table;
+                if (!tbl->caption().empty())
+                    xml += captionPara(tbl->caption());
+                std::vector<CellImage*> cellImages;
+                tbl->collectCellImages(cellImages);
+                for (auto* cimg : cellImages) {
+                    if (!probe(cimg->filepath)) {
+                        cimg->skipped = true;
+                        cimg->rId.clear();
+                        std::cerr << "[xword] warning: skipping missing image '"
+                                  << cimg->filepath << "'\n";
+                        continue;
+                    }
+                    std::string ext = fs::u8path(cimg->filepath).extension().u8string();
+                    cimg->rId = registerMedia(cimg->filepath, ext);
+                }
+                xml += tbl->toXml();
+                break;
+            }
+            case ElementType::Image: {
+                Image* img = b.image;
+                if (!probe(img->filepath())) {
+                    img->setSkipped(true);
+                    std::cerr << "[xword] warning: skipping missing image '"
+                              << img->filepath() << "'\n";
+                    break;
+                }
+                std::string ext = fs::u8path(img->filepath()).extension().u8string();
+                std::string rId = registerMedia(img->filepath(), ext);
+                img->setRId(rId);
+                auto sz = computeImageSize(img->filepath(), img->width(), img->height(), maxWidthEmu);
+                xml += drawingXml(rId, ++drawingId, sz.widthEmu, sz.heightEmu,
+                                  img->alignment(), img->hasAlignment());
+                if (!img->caption().empty())
+                    xml += captionPara(img->caption());
+                break;
+            }
+            case ElementType::BulletList:
+                xml += b.bulletList->toXml();
+                break;
+            case ElementType::Equation: {
+                Equation* eq = b.equation;
+                if (eq->mode() == EquationMode::Display)
+                    xml += "<w:p>" + eq->toXml() + "</w:p>";
+                else
+                    xml += "<w:p><w:r>" + eq->toXml() + "</w:r></w:p>";
+                break;
+            }
+            default:
+                break;
+        }
+    }
+    return xml;
+}
+
 std::string Document::renderXml(const std::string& xml) {
     // Locate <w:body> … </w:body>
     size_t bodyTag = xml.find("<w:body>");
@@ -1450,6 +1944,13 @@ std::string Document::renderXml(const std::string& xml) {
     std::string prefix = xml.substr(0, bodyTag + 9);
     std::string body   = xml.substr(bodyTag + 9, bodyEnd - (bodyTag + 9));
     std::string suffix = xml.substr(bodyEnd);
+
+    auto condTruthy = [&](const std::string& key) -> bool {
+        if (m_impl->m_templateBlocks.count(key) && !m_impl->m_templateBlocks[key].empty())
+            return true;
+        return isTruthy(
+            m_impl->m_templateVars.count(key) ? m_impl->m_templateVars.at(key) : "");
+    };
 
     // 1. Process conditionals
     auto markers = findMarkers(body);
@@ -1466,9 +1967,7 @@ std::string Document::renderXml(const std::string& xml) {
         if (m.kind == "if") {
             if (state != Normal)
                 throw std::runtime_error("nested {%if%} is not supported");
-            state = isTruthy(
-                m_impl->m_templateVars.count(m.key) ? m_impl->m_templateVars.at(m.key) : "")
-                ? IfTrue : IfFalse;
+            state = condTruthy(m.key) ? IfTrue : IfFalse;
         } else if (m.kind == "else") {
             if (state == Normal)
                 throw std::runtime_error("{%else%} without {%if%}");
@@ -1487,9 +1986,44 @@ std::string Document::renderXml(const std::string& xml) {
     if (state != IfFalse)
         bodyOut += body.substr(pos);
 
-    // 2. Replace ${key} variables in surviving XML.
-    //    Simple string substitution is safe because ${key} appears only
-    //    in <w:t> text content, never in XML tags or attributes.
+    // 2. Replace block ${key} placeholders (whole enclosing paragraph).
+    int drawingId = 1000;
+    int maxWidthEmu = parseContentWidthEmu(xml);
+    for (auto it = m_impl->m_templateBlocks.begin(); it != m_impl->m_templateBlocks.end(); ++it) {
+        const std::string& key = it->first;
+        std::string ph = "${" + key + "}";
+        size_t p = 0;
+        std::string blockXml;
+        bool rendered = false;
+        while ((p = bodyOut.find(ph, p)) != std::string::npos) {
+            size_t search = p;
+            size_t pStart = std::string::npos;
+            while (search > 0) {
+                pStart = bodyOut.rfind("<w:p", search);
+                if (pStart == std::string::npos) break;
+                char c = (pStart + 4 < bodyOut.size()) ? bodyOut[pStart + 4] : '\0';
+                if (c != '>' && c != ' ' && c != '/') {
+                    search = pStart - 1;
+                    continue;
+                }
+                break;
+            }
+            size_t pEnd = bodyOut.find("</w:p>", p);
+            if (pStart == std::string::npos || pEnd == std::string::npos) {
+                ++p;
+                continue;
+            }
+            pEnd += 6;
+            if (!rendered) {
+                blockXml = renderBlockXml(key, drawingId, maxWidthEmu);
+                rendered = true;
+            }
+            bodyOut.replace(pStart, pEnd - pStart, blockXml);
+            p = pStart + blockXml.size();
+        }
+    }
+
+    // 3. Replace remaining scalar ${key} variables in-text.
     bodyOut = replaceVars(bodyOut, m_impl->m_templateVars);
 
     return prefix + bodyOut + suffix;
@@ -1497,22 +2031,54 @@ std::string Document::renderXml(const std::string& xml) {
 
 bool Document::saveTemplate(const std::string& filepath) {
     try {
+        m_impl->m_pendingMedia.clear();
+        m_impl->m_nextTplMedia = 1;
+
         ZipWriter zip(filepath);
 
-        // Process document.xml if present
         std::string docXml;
         if (m_impl->m_templateParts.count("word/document.xml")) {
             docXml = m_impl->m_templateParts["word/document.xml"];
             docXml = renderXml(docXml);
+            if (!m_impl->m_templateBlocks.empty() || !m_impl->m_pendingMedia.empty())
+                ensureDrawingNamespaces(docXml);
         }
 
-        // Write all parts back (explicit iterators — structured bindings
-        // may crash on v141 toolset).
+        const std::string relsName = "word/_rels/document.xml.rels";
+        const std::string ctName = "[Content_Types].xml";
+        std::string relsXml = m_impl->m_templateParts.count(relsName)
+            ? m_impl->m_templateParts[relsName] : std::string();
+        std::string ctXml = m_impl->m_templateParts.count(ctName)
+            ? m_impl->m_templateParts[ctName] : std::string();
+
+        const bool needNumbering = m_impl->m_tplNeedNumbering;
+        const bool addNumberingRel = needNumbering && !relsHasNumbering(relsXml);
+        relsXml = patchRels(relsXml, m_impl->m_pendingMedia, addNumberingRel);
+        ctXml = patchContentTypes(ctXml, m_impl->m_pendingMedia, addNumberingRel);
+
+        std::string numberingXml;
+        if (needNumbering) {
+            std::string existing = m_impl->m_templateParts.count("word/numbering.xml")
+                ? m_impl->m_templateParts["word/numbering.xml"] : std::string();
+            numberingXml = mergeNumberingXml(existing, m_impl->m_nextTplListId);
+        }
+
+        bool wroteDoc = false, wroteRels = false, wroteCt = false, wroteNum = false;
         for (auto it = m_impl->m_templateParts.begin(); it != m_impl->m_templateParts.end(); ++it) {
             const std::string& name = it->first;
             std::string& data = it->second;
             if (name == "word/document.xml") {
                 zip.addEntry(name, docXml);
+                wroteDoc = true;
+            } else if (name == relsName) {
+                zip.addEntry(name, relsXml);
+                wroteRels = true;
+            } else if (name == ctName) {
+                zip.addEntry(name, ctXml);
+                wroteCt = true;
+            } else if (name == "word/numbering.xml") {
+                zip.addEntry(name, needNumbering ? numberingXml : data);
+                wroteNum = true;
             } else if (name.size() > 15 && name.substr(0, 12) == "word/header"
                        && name.substr(name.size() - 4) == ".xml") {
                 zip.addEntry(name, renderXml(data));
@@ -1522,6 +2088,19 @@ bool Document::saveTemplate(const std::string& filepath) {
             } else {
                 zip.addEntry(name, data);
             }
+        }
+        if (!wroteDoc && !docXml.empty())
+            zip.addEntry("word/document.xml", docXml);
+        if (!wroteRels)
+            zip.addEntry(relsName, relsXml);
+        if (!wroteCt)
+            zip.addEntry(ctName, ctXml);
+        if (needNumbering && !wroteNum)
+            zip.addEntry("word/numbering.xml", numberingXml);
+
+        for (const auto& m : m_impl->m_pendingMedia) {
+            if (!zip.addFileEntry("word/" + m.relTarget, m.srcPath))
+                return false;
         }
 
         zip.finalize();
