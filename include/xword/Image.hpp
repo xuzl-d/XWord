@@ -21,7 +21,7 @@ public:
     Image(const std::string& filepath);
 
     /// Convenience overload for narrow string literals.
-    Image(const char* filepath) : Image(std::string(filepath)) {}
+    Image(const char* filepath);
 
     /// Construct from a filesystem path (portable).
     Image(const std::filesystem::path& filepath);
@@ -30,7 +30,7 @@ public:
     Image(const std::wstring& filepath);
 
     /// Convenience overload for wide string literals.
-    Image(const wchar_t* filepath) : Image(std::wstring(filepath)) {}
+    Image(const wchar_t* filepath);
 
     ~Image();
     Image(Image&&) noexcept;

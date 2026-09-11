@@ -29,7 +29,9 @@ int main() {
     bool denied=false; try{templ.addParagraph("ignored");}catch(const std::invalid_argument&){denied=true;} assert(denied);
     // A source image with one requested dimension retains its intrinsic ratio.
     auto size=computeImageSize(image,100,0,0),intrinsic=computeImageSize(image,0,0,0); assert(size.widthEmu==952500); assert(std::abs(static_cast<double>(size.widthEmu)/size.heightEmu-static_cast<double>(intrinsic.widthEmu)/intrinsic.heightEmu)<.001);
-    auto unicodePath=fs::u8path(u8"中文路径/生成.docx"); fs::create_directories(unicodePath.parent_path()); save(original,unicodePath.u8string()); Document unicodeTemplate; assert(unicodeTemplate.open(unicodePath.u8string())); assert(unicodeTemplate.open(unicodePath.wstring()));
+    auto unicodePath=fs::u8path(u8"中文路径/生成.docx"); fs::create_directories(unicodePath.parent_path()); save(original,unicodePath.u8string()); assert(original.save(unicodePath.wstring())); assert(original.saveDetailed(unicodePath.wstring()).success); Document unicodeTemplate; assert(unicodeTemplate.open(unicodePath.u8string())); assert(unicodeTemplate.open(unicodePath.wstring())); auto unicodeWide=fs::u8path(u8"中文路径/宽路径生成.docx"); assert(original.save(unicodeWide.c_str())); assert(unicodeTemplate.open(unicodeWide.wstring()));
+    const wchar_t* nullWide=nullptr; assert(!unicodeTemplate.open(nullWide)); assert(!original.save(nullWide)); auto nullSave=original.saveDetailed(nullWide); assert(!nullSave.success); assert(nullSave.error.code==SaveError::InvalidArgument);
+    bool badFormat=false; try { numberFormatName(static_cast<NumberFormat>(99)); } catch(const std::invalid_argument&) { badFormat=true; } assert(badFormat);
     { std::ofstream svg("v2_image.svg"); svg<<"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"100\" viewBox=\"0 0 200 100\"><rect width=\"200\" height=\"100\" fill=\"blue\"/></svg>"; }
     fs::create_directories("media-a");fs::create_directories("media-b");
     fs::copy_file(fs::u8path(image),"media-a/shared.png",fs::copy_options::overwrite_existing);

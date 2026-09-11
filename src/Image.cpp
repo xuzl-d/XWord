@@ -29,6 +29,11 @@ namespace {
 std::string pathToUtf8(const std::filesystem::path& p) {
     return p.u8string();
 }
+template<typename Char>
+std::basic_string<Char> requirePath(const Char* path) {
+    if (!path) throw std::invalid_argument("Path is null");
+    return path;
+}
 } // namespace
 
 Image::Image(const std::string& filepath)
@@ -47,8 +52,16 @@ Image::Image(const std::filesystem::path& filepath)
     m_impl->m_rid = "rId_img_" + filepath.stem().u8string();
 }
 
+Image::Image(const char* filepath)
+    : Image(requirePath(filepath))
+{}
+
 Image::Image(const std::wstring& filepath)
     : Image(std::filesystem::path(filepath))
+{}
+
+Image::Image(const wchar_t* filepath)
+    : Image(requirePath(filepath))
 {}
 
 Image::~Image() = default;

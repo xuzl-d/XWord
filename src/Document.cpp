@@ -205,6 +205,10 @@ void addMetadata(Package& package,const DocumentProperties& props,const std::map
 }
 }
 bool Document::save(const std::string& path) { return saveDetailed(path).success; }
+bool Document::save(const std::wstring& path) { return save(std::filesystem::path(path).u8string()); }
+SaveResult Document::saveDetailed(const std::wstring& path,const SaveOptions& options) {
+    return saveDetailed(std::filesystem::path(path).u8string(), options);
+}
 SaveResult Document::saveDetailed(const std::string& path,const SaveOptions& options) {
     Package package; package.options=options;
     SaveResult result;

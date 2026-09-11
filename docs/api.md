@@ -140,7 +140,7 @@ doc.addBibliography("参考文献");
 
 普通变量只修改 `w:t` 文本节点，跨 run 占位符保留首段文字的格式，替换文本会正确转义。条件标记独占段落，不支持嵌套；块占位符也须独占段落，整段由内容块替换。原节属性保留。正文、页眉页脚中的占位符可以替换；未修改部件保留原始字节。
 
-`save(path)` 返回 bool；推荐 `saveDetailed(path, options)`，其结果包含 success、error(code/part/message)、warnings。错误包括 InvalidArgument、InvalidXml、InvalidReference、MissingResource、IoError。参数 setter 对明显错误抛出 `std::invalid_argument`／`std::out_of_range`，Python 映射为 ValueError／IndexError；保存期间的错误收集到结果。
+`save(path)` 返回 bool；推荐 `saveDetailed(path, options)`，其结果包含 success、error(code/part/message)、warnings。C++ 的 `save`／`saveDetailed` 与 `open` 一样接受 UTF-8 `std::string` 以及 `std::wstring`／`wchar_t*` 宽路径。错误包括 InvalidArgument、InvalidXml、InvalidReference、MissingResource、IoError。参数 setter 对明显错误抛出 `std::invalid_argument`／`std::out_of_range`，Python 映射为 ValueError／IndexError；保存期间的错误收集到结果。
 
 保存校验包关系和引用，写入同目录临时文件，再替换目标。失败不替换已有成品；同一文档重复保存不会累加关系或编号。实际布局、页面总数、分页引用和 Word 原生文献域缓存由 Word 更新；`settings.xml` 及域 dirty 标记会请求更新，但客户端是否自动执行由客户端决定。
 

@@ -126,8 +126,15 @@ struct DocumentProperties {
 struct CustomProperty { std::string value; PropertyType type = PropertyType::String; };
 
 inline std::string numberFormatName(NumberFormat n) {
-    static const char* names[] = {"decimal", "upperRoman", "lowerRoman", "upperLetter", "lowerLetter", "bullet"};
-    return names[static_cast<int>(n)];
+    switch (n) {
+        case NumberFormat::Decimal:     return "decimal";
+        case NumberFormat::UpperRoman:  return "upperRoman";
+        case NumberFormat::LowerRoman:  return "lowerRoman";
+        case NumberFormat::UpperLetter: return "upperLetter";
+        case NumberFormat::LowerLetter: return "lowerLetter";
+        case NumberFormat::Bullet:      return "bullet";
+    }
+    throw std::invalid_argument("Invalid number format");
 }
 
 /// Page margin dimensions (cm).

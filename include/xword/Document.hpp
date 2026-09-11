@@ -260,7 +260,7 @@ public:
     /// UTF-8 `std::string` paths and Windows wide paths are both accepted.
     bool open(const std::string& filepath);
     bool open(const std::wstring& filepath);
-    bool open(const wchar_t* filepath) { return open(std::wstring(filepath)); }
+    bool open(const wchar_t* filepath) { return filepath ? open(std::wstring(filepath)) : false; }
 
     /// Store a template variable value (in-text replacement of `${key}`).
     Document& set(const std::string& key, const std::string& value);
@@ -305,8 +305,20 @@ public:
 
     /// Write the document to a .docx file.
     /// @return true on success.
+    /// UTF-8 `std::string` paths and Windows wide paths are both accepted.
     bool save(const std::string& filepath);
+    bool save(const std::wstring& filepath);
+    bool save(const wchar_t* filepath) { return filepath ? save(std::wstring(filepath)) : false; }
     SaveResult saveDetailed(const std::string& filepath,const SaveOptions& options = SaveOptions());
+    SaveResult saveDetailed(const std::wstring& filepath,const SaveOptions& options = SaveOptions());
+    SaveResult saveDetailed(const wchar_t* filepath,const SaveOptions& options = SaveOptions()) {
+        if (!filepath) {
+            SaveResult r;
+            r.error = {SaveError::InvalidArgument, "", "Path is null"};
+            return r;
+        }
+        return saveDetailed(std::wstring(filepath), options);
+    }
 
 private:
     struct Impl;
