@@ -45,6 +45,14 @@ enum class CaptionNumStyle {
     ByChapter,   ///< Per-chapter: 1-1, 1-2, 2-1, … (H1 triggers chapter increment)
 };
 
+/// East-Asian document grid mode (ST_DocGrid, ECMA-376 §17.18.16).
+enum class DocGridType {
+    Default,        ///< No grid; lines take their natural height.
+    Lines,          ///< Line grid only.
+    LinesAndChars,  ///< Line and character grid.
+    SnapToChars,    ///< Character grid only.
+};
+
 /// Section break type (corresponds to ST_SectionMark in ECMA-376 §17.18.77).
 enum class SectionBreakType {
     NextPage,     ///< New section starts on the following page (default).
@@ -214,6 +222,17 @@ inline std::string vAlignmentToString(VAlignment v) {
         case VAlignment::Bottom: return "bottom";
     }
     return "top";
+}
+
+/// Convert DocGridType enum to the OOXML w:docGrid/@w:type value.
+inline const char* docGridTypeToString(DocGridType t) {
+    switch (t) {
+        case DocGridType::Default:       return "default";
+        case DocGridType::Lines:         return "lines";
+        case DocGridType::LinesAndChars: return "linesAndChars";
+        case DocGridType::SnapToChars:   return "snapToChars";
+    }
+    return "default";
 }
 
 /// Convert SectionBreakType enum to OOXML string.

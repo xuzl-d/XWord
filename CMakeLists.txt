@@ -83,6 +83,12 @@ if(XWORD_BUILD_EXAMPLES)
     if(MSVC)
         target_compile_options(xword_demo_platform PRIVATE /utf-8 /wd4996)
     endif()
+
+    add_executable(xword_demo_scaffold examples/demo_scaffold.cpp)
+    target_link_libraries(xword_demo_scaffold PRIVATE xword)
+    if(MSVC)
+        target_compile_options(xword_demo_scaffold PRIVATE /utf-8 /wd4996)
+    endif()
 endif()
 
 # ---- Tests ----

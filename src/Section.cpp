@@ -4,6 +4,7 @@
 namespace xword {
 struct Section::Impl {
     Page page; SectionBreakType type; int columns=1,start=0; Length space=Length::pt(36); bool separator=false,title=false;
+    DocGridType grid=DocGridType::Default; int gridPitch=312;
     NumberFormat pageFormat=NumberFormat::Decimal; std::vector<Column> widths;
     std::array<std::unique_ptr<Content>,3> headers,footers;
     std::vector<std::unique_ptr<Content>> retired;
@@ -17,6 +18,11 @@ Section& Section::setColumns(int n,Length space,bool separator) { if(n<1||n>45||
 Section& Section::setColumnWidths(const std::vector<Column>& cols,bool separator) { if(cols.empty()||cols.size()>45) throw std::invalid_argument("Invalid columns"); for(const auto& c:cols) if(c.width.dxa()<=0||c.space.dxa()<0) throw std::invalid_argument("Invalid column dimensions"); m_impl->widths=cols; m_impl->columns=static_cast<int>(cols.size()); m_impl->separator=separator; return *this; }
 Section& Section::setPageNumbering(NumberFormat f,int start) { if(start<0||f==NumberFormat::Bullet) throw std::invalid_argument("Invalid page numbering"); m_impl->pageFormat=f; m_impl->start=start; return *this; }
 Section& Section::setTitlePage(bool on) { m_impl->title=on; return *this; }
+Section& Section::setDocumentGrid(DocGridType t,int linePitch) {
+    if(linePitch<=0||linePitch>31680) throw std::invalid_argument("Invalid document grid pitch");
+    m_impl->grid=t; m_impl->gridPitch=linePitch; return *this;
+}
+Section& Section::clearDocumentGrid() { m_impl->grid=DocGridType::Default; return *this; }
 Section& Section::setFootnoteOptions(const NoteOptions& o) { if(o.start<1||o.format==NumberFormat::Bullet) throw std::invalid_argument("Invalid footnote options"); m_impl->footnotes=o; return *this; }
 Section& Section::setEndnoteOptions(const NoteOptions& o) { if(o.start<1||o.restart==NoteRestart::EachPage||o.format==NumberFormat::Bullet) throw std::invalid_argument("Invalid endnote options"); m_impl->endnotes=o; return *this; }
 Content& Section::header(HeaderFooterType t) { auto& p=m_impl->headers.at(static_cast<int>(t)); if(!p)p=std::make_unique<Content>(); return *p; }
@@ -27,7 +33,7 @@ Section& Section::clearHeader(HeaderFooterType t) { linkHeaderToPrevious(t); hea
 Section& Section::clearFooter(HeaderFooterType t) { linkFooterToPrevious(t); footer(t); return *this; }
 const Content* Section::headerContent(HeaderFooterType t) const { return m_impl->headers.at(static_cast<int>(t)).get(); }
 const Content* Section::footerContent(HeaderFooterType t) const { return m_impl->footers.at(static_cast<int>(t)).get(); }
-void Section::inheritLayout(const Section& p) { m_impl->page=p.m_impl->page; m_impl->columns=p.m_impl->columns; m_impl->space=p.m_impl->space; m_impl->separator=p.m_impl->separator; m_impl->widths=p.m_impl->widths; m_impl->pageFormat=p.m_impl->pageFormat; m_impl->title=p.m_impl->title; m_impl->footnotes=p.m_impl->footnotes; m_impl->endnotes=p.m_impl->endnotes; }
+void Section::inheritLayout(const Section& p) { m_impl->page=p.m_impl->page; m_impl->columns=p.m_impl->columns; m_impl->space=p.m_impl->space; m_impl->separator=p.m_impl->separator; m_impl->widths=p.m_impl->widths; m_impl->pageFormat=p.m_impl->pageFormat; m_impl->title=p.m_impl->title; m_impl->footnotes=p.m_impl->footnotes; m_impl->endnotes=p.m_impl->endnotes; m_impl->grid=p.m_impl->grid; m_impl->gridPitch=p.m_impl->gridPitch; }
 int Section::contentWidth() const {
     const auto& p=page(); int w=p.customWidth?p.customWidth:pageWidthDxa(p.size,p.orientation);
     return w-Length::cm(p.margins.left+p.margins.right).dxa()-p.gutter.dxa();
@@ -54,6 +60,9 @@ std::string Section::propertiesXml() const {
     int sum=0;
     for(size_t i=0;i<m_impl->widths.size();++i) { const auto& c=m_impl->widths[i]; sum+=c.width.dxa()+(i+1<m_impl->widths.size()?c.space.dxa():0); x+="<w:col w:w=\""+std::to_string(c.width.dxa())+"\" w:space=\""+std::to_string(c.space.dxa())+"\"/>"; }
     if(sum>contentWidth()) throw std::invalid_argument("Columns exceed page width");
-    x+="</w:cols>"; if(m_impl->title)x+="<w:titlePg/>"; return x;
+    x+="</w:cols>"; if(m_impl->title)x+="<w:titlePg/>";
+    // w:docGrid follows w:titlePg in CT_SectPr order.
+    if(m_impl->grid!=DocGridType::Default)x+="<w:docGrid w:type=\""+std::string(docGridTypeToString(m_impl->grid))+"\" w:linePitch=\""+std::to_string(m_impl->gridPitch)+"\"/>";
+    return x;
 }
 }

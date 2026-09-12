@@ -23,3 +23,6 @@ tools/OpenXmlValidator/obj/
 
 # Archive packages
 *.zip
+
+# Generated documents (output of the examples)
+/扣件式落地脚手架_1.docx
