@@ -38,6 +38,7 @@ add_library(xword SHARED
     src/Style.cpp
     src/Content.cpp
     src/Section.cpp
+    src/Types.cpp
     src/internal/Package.cpp
     src/internal/ZipWriter.cpp
     src/internal/ZipReader.cpp

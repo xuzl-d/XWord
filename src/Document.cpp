@@ -80,8 +80,11 @@ Document& Document::addTOC(const std::wstring& l,const std::wstring& t) { return
 Document& Document::addFigureTOC(const std::string& t) { if(!t.empty())addHeadingNoNum(t,1); addParagraph().addField("TOC \\h \\z \\c \"Figure\""); return *this; }
 Document& Document::addTableTOC(const std::string& t) { if(!t.empty())addHeadingNoNum(t,1); addParagraph().addField("TOC \\h \\z \\c \"Table\""); return *this; }
 Image& Document::addImage(const std::string& s) { return m_impl->body().addImage(s); }
+// The remaining overloads normalise the path and funnel into the UTF-8 entry point.
+Image& Document::addImage(const char* s) { return addImage(std::string(s)); }
 Image& Document::addImage(const std::filesystem::path& s) { return addImage(s.u8string()); }
 Image& Document::addImage(const std::wstring& s) { return addImage(std::filesystem::path(s)); }
+Image& Document::addImage(const wchar_t* s) { return addImage(std::wstring(s)); }
 Table& Document::addTable(int r,int c) { return m_impl->body().addTable(r,c).setStyle(m_impl->tableStyle); }
 BulletList& Document::addBulletList() { return m_impl->body().addBulletList(); }
 BulletList& Document::addOrderedList() { return m_impl->body().addOrderedList(); }
@@ -206,8 +209,17 @@ void addMetadata(Package& package,const DocumentProperties& props,const std::map
 }
 bool Document::save(const std::string& path) { return saveDetailed(path).success; }
 bool Document::save(const std::wstring& path) { return save(std::filesystem::path(path).u8string()); }
+bool Document::save(const wchar_t* path) { return path ? save(std::wstring(path)) : false; }
 SaveResult Document::saveDetailed(const std::wstring& path,const SaveOptions& options) {
     return saveDetailed(std::filesystem::path(path).u8string(), options);
+}
+SaveResult Document::saveDetailed(const wchar_t* path,const SaveOptions& options) {
+    if (!path) {
+        SaveResult r;
+        r.error = {SaveError::InvalidArgument, "", "Path is null"};
+        return r;
+    }
+    return saveDetailed(std::wstring(path), options);
 }
 SaveResult Document::saveDetailed(const std::string& path,const SaveOptions& options) {
     Package package; package.options=options;
@@ -313,6 +325,7 @@ SaveResult Document::saveDetailed(const std::string& path,const SaveOptions& opt
 }
 
 bool Document::open(const std::wstring& path) { return open(std::filesystem::path(path).u8string()); }
+bool Document::open(const wchar_t* path) { return path ? open(std::wstring(path)) : false; }
 bool Document::open(const std::string& path) {
     auto parts=readZip(path); if(!parts.count("word/document.xml")||!parts.count("[Content_Types].xml"))return false;
     try { pugi::xml_document d; parseXml(d,parts.at("word/document.xml")); canonicalizeWordPrefixes(d.document_element()); if(!d.document_element().child("w:body"))return false; } catch(...) {return false;}
@@ -320,6 +333,9 @@ bool Document::open(const std::string& path) {
     m_impl=std::move(replacement); addSection(); return true;
 }
 Document& Document::set(const std::string& key,const std::string& value) { m_impl->vars[key]=value; return *this; }
+Document& Document::set(const std::string& key,const char* v) { return set(key,std::string(v)); }
+Document& Document::set(const std::string& key,bool v) { return set(key,std::string(v?"true":"false")); }
+Document& Document::set(const std::string& key,int v) { return set(key,std::to_string(v)); }
 Document& Document::set(const std::string& key,double value,int precision) { if(precision<0||precision>17||!std::isfinite(value))throw std::invalid_argument("Invalid numeric template value"); std::ostringstream s; s<<std::fixed<<std::setprecision(precision)<<value; return set(key,s.str()); }
 Document& Document::set(const std::string& key,Paragraph p) { m_impl->block(key).append(std::move(p)); return *this; }
 Document& Document::set(const std::string& key,Table p) { m_impl->block(key).append(std::move(p)); return *this; }

@@ -1,0 +1,21 @@
+# Formatting for the public headers in include/xword/.
+#   xcrun --find clang-format -i include/xword/*.hpp
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++17
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+BreakBeforeBraces: Allman
+# Doxygen prose and @{ groups must not be re-wrapped.
+ReflowComments: false
+FixNamespaceComments: true
+AlignConsecutiveDeclarations: true
+AlignConsecutiveAssignments: true
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+AccessModifierOffset: -4
+MaxEmptyLinesToKeep: 1
+# Bind * and & to the type, matching the rest of the codebase.
+PointerAlignment: Left

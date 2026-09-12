@@ -1,19 +1,20 @@
 #pragma once
 
-#include "Paragraph.hpp"
-#include "Table.hpp"
 #include "BulletList.hpp"
-#include "Image.hpp"
 #include "Equation.hpp"
-#include "Types.hpp"
+#include "Image.hpp"
+#include "Paragraph.hpp"
 #include "Section.hpp"
+#include "Table.hpp"
+#include "Types.hpp"
+#include <filesystem>
 #include <memory>
 #include <string>
-#include <vector>
 #include <unordered_map>
-#include <filesystem>
+#include <vector>
 
-namespace xword {
+namespace xword
+{
 
 // ════════════════════════════════════════════════════════════
 //  Document  —  top-level docx document builder
@@ -54,13 +55,20 @@ namespace xword {
 /// Condition keys are truthy unless the value is "false", "0", or ""
 /// (block content for a key is always truthy).
 ///
-class Document {
+class Document
+{
 public:
+    /// Create an empty document with a single section.
     Document();
-    ~Document();
 
-    Document(const Document&) = delete;
+    /// @name Rule of five
+    /// A document owns every section and every block added to it: movable,
+    /// not copyable.
+    /// @{
+    ~Document();
+    Document(const Document&)            = delete;
     Document& operator=(const Document&) = delete;
+    /// @}
 
     // ── Page settings ──────────────────────────────────────
 
@@ -76,8 +84,7 @@ public:
     /// @param eastAsia  Font for East-Asian (CJK) text.
     /// @param ascii     Font for ASCII/Latin text.
     /// @param hAnsi     Font for high-ANSI text (defaults to eastAsia if empty).
-    Document& setBodyFont(const std::string& eastAsia,
-                          const std::string& ascii = "",
+    Document& setBodyFont(const std::string& eastAsia, const std::string& ascii = "",
                           const std::string& hAnsi = "");
 
     /// Set default body text font size in points.
@@ -127,8 +134,7 @@ public:
     /// @param levels  Outline level range, e.g. "1-3".
     /// @param title   Optional TOC heading; if non-empty a heading is
     ///                prepended (without numbering).
-    Document& addTOC(const std::string& levels = "1-3",
-                     const std::string& title = "");
+    Document& addTOC(const std::string& levels = "1-3", const std::string& title = "");
     Document& addTOC(const std::wstring& levels, const std::wstring& title);
 
     // ── Paragraphs ─────────────────────────────────────────
@@ -146,18 +152,17 @@ public:
 
     /// @{
     /// Convenience overloads for various path types.
-    Image& addImage(const char* filepath) { return addImage(std::string(filepath)); }
+    Image& addImage(const char* filepath);
     Image& addImage(const std::filesystem::path& filepath);
     Image& addImage(const std::wstring& filepath);
-    Image& addImage(const wchar_t* filepath) { return addImage(std::wstring(filepath)); }
+    Image& addImage(const wchar_t* filepath);
     /// @}
 
     /// Enable automatic image caption numbering.
     /// @param prefix  Caption prefix, e.g. "Fig." or "图".
     /// @param style   Numbering strategy (Sequential or ByChapter).
-    Document& enableImageNumbering(
-        const std::string& prefix = "\xe5\x9b\xbe",
-        CaptionNumStyle style = CaptionNumStyle::Sequential);
+    Document& enableImageNumbering(const std::string& prefix = "\xe5\x9b\xbe",
+                                   CaptionNumStyle    style  = CaptionNumStyle::Sequential);
 
     /// Disable image caption numbering.
     Document& disableImageNumbering();
@@ -169,9 +174,8 @@ public:
     Table& addTable(int rows, int cols);
 
     /// Enable automatic table caption numbering.
-    Document& enableTableNumbering(
-        const std::string& prefix = "\xe8\xa1\xa8",
-        CaptionNumStyle style = CaptionNumStyle::Sequential);
+    Document& enableTableNumbering(const std::string& prefix = "\xe8\xa1\xa8",
+                                   CaptionNumStyle    style  = CaptionNumStyle::Sequential);
 
     /// Disable table caption numbering.
     Document& disableTableNumbering();
@@ -191,27 +195,78 @@ public:
     /// Call setPage() / setHeader() / setFooter() afterwards to customise
     /// the new section.
     Document& addSectionBreak(SectionBreakType type = SectionBreakType::NextPage);
+
+    /// The section that subsequent content is added to.
     Section& currentSection();
+
+    /// Append a new section and make it current.  Returns the new section so
+    /// its page settings and header/footer can be configured.
     Section& addSection(SectionBreakType type = SectionBreakType::NextPage);
+
+    /// Insert a page break.
     Document& addPageBreak();
+
+    /// Use separate headers/footers for odd and even pages.
     Document& setEvenAndOddHeaders(bool on = true);
-    Paragraph& addHeadingParagraph(const std::string& text,int level,bool numbered = true);
+
+    /// Add a heading, returning its paragraph for extra content.
+    /// @param numbered  False to leave the heading out of the numbering sequence.
+    Paragraph& addHeadingParagraph(const std::string& text, int level, bool numbered = true);
+
+    /// Insert a table-of-figures field.
+    /// @param title  Optional heading placed above the field.
     Document& addFigureTOC(const std::string& title = "");
+
+    /// Insert a table-of-tables field.
+    /// @param title  Optional heading placed above the field.
     Document& addTableTOC(const std::string& title = "");
-    Document& registerParagraphStyle(const std::string& id,const ParagraphStyle& style);
-    Document& registerCharacterStyle(const std::string& id,const RunStyle& style,const std::string& basedOn = "");
-    Document& registerTableStyle(const std::string& id,const TableStyleDefinition& style);
+
+    /// Define a paragraph style that content can then reference by ID.
+    Document& registerParagraphStyle(const std::string& id, const ParagraphStyle& style);
+
+    /// Define a character style.
+    /// @param basedOn  Style ID to inherit from.
+    Document& registerCharacterStyle(const std::string& id, const RunStyle& style,
+                                     const std::string& basedOn = "");
+
+    /// Define a table style that tables can then reference by ID.
+    Document& registerTableStyle(const std::string& id, const TableStyleDefinition& style);
+
+    /// Add an empty footnote and return it for content and options.
     Note& addFootnote();
+
+    /// Add an endnote holding one paragraph of text; returns its ID.
     int addEndnote(const std::string& text);
+
+    /// Add an empty endnote and return it for content and options.
     Note& addEndnote();
+
+    /// @{
+    /// Look up a note by ID.
     Note& footnote(int id);
     Note& endnote(int id);
-    int addComment(const std::string& text,const std::string& author,const std::string& date = "");
+    /// @}
+
+    /// Add a comment; returns its ID for Paragraph::startComment()/endComment().
+    /// @param date  UTC ISO 8601; defaults to the current time.
+    int addComment(const std::string& text, const std::string& author,
+                   const std::string& date = "");
+
+    /// Register a bibliography entry, cited by tag from Paragraph::addCitation().
     Document& addSource(const BibliographySource& source);
+
+    /// Select the citation style used by the bibliography field.
     Document& setBibliographyStyle(const std::string& style = "IEEE");
+
+    /// Insert a bibliography field.
+    /// @param title  Optional heading placed above the field.
     Document& addBibliography(const std::string& title = "");
+
+    /// Set the built-in document properties (title, author, …).
     Document& setProperties(const DocumentProperties& properties);
-    Document& setCustomProperty(const std::string& name,const CustomProperty& property);
+
+    /// Set a custom document property.
+    Document& setCustomProperty(const std::string& name, const CustomProperty& property);
 
     /// Enable different first page header/footer for the current section.
     Document& enableTitlePage();
@@ -260,16 +315,16 @@ public:
     /// UTF-8 `std::string` paths and Windows wide paths are both accepted.
     bool open(const std::string& filepath);
     bool open(const std::wstring& filepath);
-    bool open(const wchar_t* filepath) { return filepath ? open(std::wstring(filepath)) : false; }
+    bool open(const wchar_t* filepath);
 
     /// Store a template variable value (in-text replacement of `${key}`).
     Document& set(const std::string& key, const std::string& value);
 
     /// @{
     /// Convenience overloads for common types.
-    Document& set(const std::string& key, const char* v) { return set(key, std::string(v)); }
-    Document& set(const std::string& key, bool   v) { return set(key, std::string(v ? "true" : "false")); }
-    Document& set(const std::string& key, int    v) { return set(key, std::to_string(v)); }
+    Document& set(const std::string& key, const char* v);
+    Document& set(const std::string& key, bool v);
+    Document& set(const std::string& key, int v);
     /// Store a double with a specified number of decimal places.
     Document& set(const std::string& key, double v, int precision = 2);
     /// @}
@@ -299,26 +354,23 @@ public:
     /// @}
 
     /// Prevent accidental implicit conversions (linker error if used).
-    template<typename T> Document& set(const std::string& key, T) = delete;
+    /// Must stay in the header: the deleted overload only suppresses implicit
+    /// conversions while it is visible at the call site.
+    template <typename T> Document& set(const std::string& key, T) = delete;
 
     // ── Save ───────────────────────────────────────────────
 
     /// Write the document to a .docx file.
     /// @return true on success.
     /// UTF-8 `std::string` paths and Windows wide paths are both accepted.
-    bool save(const std::string& filepath);
-    bool save(const std::wstring& filepath);
-    bool save(const wchar_t* filepath) { return filepath ? save(std::wstring(filepath)) : false; }
-    SaveResult saveDetailed(const std::string& filepath,const SaveOptions& options = SaveOptions());
-    SaveResult saveDetailed(const std::wstring& filepath,const SaveOptions& options = SaveOptions());
-    SaveResult saveDetailed(const wchar_t* filepath,const SaveOptions& options = SaveOptions()) {
-        if (!filepath) {
-            SaveResult r;
-            r.error = {SaveError::InvalidArgument, "", "Path is null"};
-            return r;
-        }
-        return saveDetailed(std::wstring(filepath), options);
-    }
+    bool       save(const std::string& filepath);
+    bool       save(const std::wstring& filepath);
+    bool       save(const wchar_t* filepath);
+    SaveResult saveDetailed(const std::string& filepath,
+                            const SaveOptions& options = SaveOptions());
+    SaveResult saveDetailed(const std::wstring& filepath,
+                            const SaveOptions&  options = SaveOptions());
+    SaveResult saveDetailed(const wchar_t* filepath, const SaveOptions& options = SaveOptions());
 
 private:
     struct Impl;

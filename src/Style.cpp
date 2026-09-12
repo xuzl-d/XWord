@@ -4,6 +4,126 @@
 
 namespace xword {
 using internal::xmlEscape;
+
+// ── RunStyle ─────────────────────────────────────────────
+
+RunStyle& RunStyle::bold(bool on)
+{
+    m_bold = on;
+    m_boldState = on ? Toggle::On : Toggle::Off;
+    return *this;
+}
+
+RunStyle& RunStyle::italic(bool on)
+{
+    m_italic = on;
+    m_italicState = on ? Toggle::On : Toggle::Off;
+    return *this;
+}
+
+RunStyle& RunStyle::underline(bool on)
+{
+    m_underline = on;
+    m_underlineState = on ? Toggle::On : Toggle::Off;
+    return *this;
+}
+
+RunStyle& RunStyle::fontSize(double pt)
+{
+    m_fontSize = pt;
+    return *this;
+}
+
+RunStyle& RunStyle::color(const std::string& hex)
+{
+    m_color = hex;
+    return *this;
+}
+
+RunStyle& RunStyle::font(const std::string& name)
+{
+    m_font = name;
+    return *this;
+}
+
+RunStyle& RunStyle::eastAsiaFont(const std::string& name)
+{
+    m_eastAsia = name;
+    return *this;
+}
+
+RunStyle& RunStyle::strike(bool on)
+{
+    m_strike = on ? Toggle::On : Toggle::Off;
+    return *this;
+}
+
+RunStyle& RunStyle::superscript()
+{
+    m_position = "superscript";
+    return *this;
+}
+
+RunStyle& RunStyle::subscript()
+{
+    m_position = "subscript";
+    return *this;
+}
+
+RunStyle& RunStyle::baseline()
+{
+    m_position = "baseline";
+    return *this;
+}
+
+RunStyle& RunStyle::highlight(const std::string& color)
+{
+    m_highlight = color;
+    return *this;
+}
+
+RunStyle& RunStyle::setStyleId(const std::string& id)
+{
+    m_styleId = id;
+    return *this;
+}
+
+RunStyle& RunStyle::inheritBold()
+{
+    m_boldState = Toggle::Inherit;
+    m_bold = false;
+    return *this;
+}
+
+RunStyle& RunStyle::inheritItalic()
+{
+    m_italicState = Toggle::Inherit;
+    m_italic = false;
+    return *this;
+}
+
+RunStyle& RunStyle::inheritUnderline()
+{
+    m_underlineState = Toggle::Inherit;
+    m_underline = false;
+    return *this;
+}
+
+bool RunStyle::bold() const { return m_bold; }
+bool RunStyle::italic() const { return m_italic; }
+bool RunStyle::underline() const { return m_underline; }
+double RunStyle::fontSize() const { return m_fontSize; }
+const std::string& RunStyle::color() const { return m_color; }
+const std::string& RunStyle::font() const { return m_font; }
+
+bool RunStyle::hasFormatting() const
+{
+    return m_boldState != Toggle::Inherit || m_italicState != Toggle::Inherit
+        || m_underlineState != Toggle::Inherit || m_strike != Toggle::Inherit
+        || !m_position.empty() || !m_highlight.empty() || !m_eastAsia.empty()
+        || !m_styleId.empty() || m_fontSize > 0 || !m_color.empty() || !m_font.empty();
+}
+
 RunStyle RunStyle::withDefaults(const RunStyle& d) const {
     RunStyle r=*this;
     if(r.m_boldState==Toggle::Inherit){r.m_boldState=d.m_boldState;r.m_bold=d.m_bold;}

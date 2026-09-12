@@ -28,6 +28,12 @@ Paragraph& Content::addEquation(const std::wstring& s) { return addEquation(inte
 Equation& Content::addMath(const std::string& s,EquationMode mode) { auto p=std::make_unique<Equation>(s,mode); auto result=p.get(); m_impl->blocks.emplace_back(std::move(p)); return *result; }
 Image& Content::addImage(const std::string& path) { auto p=std::make_unique<Image>(path); auto result=p.get(); m_impl->blocks.emplace_back(std::move(p)); return *result; }
 Image& Content::addImage(const std::string& path,int w,int h) { return addImage(path).setSize(w,h); }
+// The remaining overloads normalise the path and funnel into the UTF-8 entry point.
+Image& Content::addImage(const char* path) { return addImage(std::string(path)); }
+Image& Content::addImage(const std::wstring& path) { return addImage(std::filesystem::path(path).u8string()); }
+Image& Content::addImage(const std::filesystem::path& path) { return addImage(path.u8string()); }
+Image& Content::addImage(const std::wstring& path,int w,int h) { return addImage(std::filesystem::path(path).u8string(),w,h); }
+Image& Content::addImage(const std::filesystem::path& path,int w,int h) { return addImage(path.u8string(),w,h); }
 Table& Content::addTable(int r,int c) { auto p=std::make_unique<Table>(r,c); p->setStyle(effectiveStyle()); auto result=p.get(); m_impl->blocks.emplace_back(std::move(p)); return *result; }
 BulletList& Content::addBulletList() { auto p=std::make_unique<BulletList>(); auto result=p.get(); m_impl->blocks.emplace_back(std::move(p)); return *result; }
 BulletList& Content::addOrderedList() { auto p=std::make_unique<BulletList>(ListType::Ordered); auto result=p.get(); m_impl->blocks.emplace_back(std::move(p)); return *result; }
@@ -50,4 +56,7 @@ void Content::append(Table p) { m_impl->blocks.emplace_back(std::make_unique<Tab
 void Content::append(Image p) { m_impl->blocks.emplace_back(std::make_unique<Image>(std::move(p))); }
 void Content::append(BulletList p) { m_impl->blocks.emplace_back(std::make_unique<BulletList>(std::move(p))); }
 void Content::append(Equation p) { m_impl->blocks.emplace_back(std::make_unique<Equation>(std::move(p))); }
+
+Note::Note(int id) : id_(id) {}
+int Note::id() const { return id_; }
 }
