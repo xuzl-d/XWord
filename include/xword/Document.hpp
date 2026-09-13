@@ -317,6 +317,19 @@ public:
     bool open(const std::wstring& filepath);
     bool open(const wchar_t* filepath);
 
+    /// Append the body of another DOCX document to this document.
+    /// The target must have been opened with open().  Source content is
+    /// appended after the existing body and may either inherit the target's
+    /// formatting or retain its own formatting.
+    bool appendDocument(const std::string& filepath,
+                        MergeFormat format = MergeFormat::Source);
+    bool appendDocument(const std::wstring& filepath,
+                        MergeFormat format = MergeFormat::Source);
+    bool appendDocument(const wchar_t* filepath,
+                        MergeFormat format = MergeFormat::Source);
+    bool appendDocument(Document& other,
+                        MergeFormat format = MergeFormat::Source);
+
     /// Store a template variable value (in-text replacement of `${key}`).
     Document& set(const std::string& key, const std::string& value);
 

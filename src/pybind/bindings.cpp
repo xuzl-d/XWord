@@ -53,6 +53,10 @@ PYBIND11_MODULE(_native, m) {
         .value("OddPage",SectionBreakType::OddPage)
         .value("NextColumn",SectionBreakType::NextColumn)
         ;
+    py::enum_<MergeFormat>(m,"MergeFormat")
+        .value("Target",MergeFormat::Target)
+        .value("Source",MergeFormat::Source)
+        ;
     py::enum_<Toggle>(m,"Toggle")
         .value("Inherit",Toggle::Inherit)
         .value("Off",Toggle::Off)
@@ -546,6 +550,8 @@ PYBIND11_MODULE(_native, m) {
         .def("clear_header", &Document::clearHeader, py::return_value_policy::reference_internal)
         .def("clear_footer", &Document::clearFooter, py::return_value_policy::reference_internal)
         .def("open", py::overload_cast<const std::string&>(&Document::open), py::return_value_policy::reference_internal)
+        .def("append_document", py::overload_cast<const std::string&, MergeFormat>(&Document::appendDocument), py::return_value_policy::reference_internal, py::arg("path"), py::arg("format")=MergeFormat::Source)
+        .def("append_document", py::overload_cast<Document&, MergeFormat>(&Document::appendDocument), py::return_value_policy::reference_internal, py::arg("other"), py::arg("format")=MergeFormat::Source)
         .def("save", py::overload_cast<const std::string&>(&Document::save), py::return_value_policy::reference_internal)
         .def("set_default_paragraph_indent", &Document::setDefaultParagraphIndent, py::return_value_policy::reference_internal, py::arg("chars")=2,py::arg("font_size_pt")=12)
         .def("set_body_font", &Document::setBodyFont, py::return_value_policy::reference_internal, py::arg("east_asia"),py::arg("ascii")="",py::arg("h_ansi")="")

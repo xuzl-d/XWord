@@ -96,6 +96,13 @@ enum class SectionBreakType
     NextColumn, ///< New section starts in the next column.
 };
 
+/// Formatting policy used when appending one DOCX document to another.
+enum class MergeFormat
+{
+    Target, ///< Apply the target document's paragraph and character formatting.
+    Source  ///< Preserve formatting from the appended document.
+};
+
 // ── Value types ──────────────────────────────────────────
 
 /// Explicit physical length. Legacy numeric APIs retain their documented units.

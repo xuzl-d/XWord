@@ -332,6 +332,84 @@ bool Document::open(const std::string& path) {
     auto replacement=std::make_unique<Impl>(); replacement->templateParts.insert(parts.begin(),parts.end()); replacement->isTemplate=true;
     m_impl=std::move(replacement); addSection(); return true;
 }
+bool Document::appendDocument(const std::wstring& path, MergeFormat format) {
+    return appendDocument(std::filesystem::path(path).u8string(), format);
+}
+bool Document::appendDocument(const wchar_t* path, MergeFormat format) {
+    return path ? appendDocument(std::wstring(path), format) : false;
+}
+bool Document::appendDocument(const std::string& path, MergeFormat format) {
+    if(!m_impl->isTemplate || !m_impl->templateParts.count("word/document.xml")) return false;
+    try {
+        auto sourceParts=readZip(path);
+        auto sourceIt=sourceParts.find("word/document.xml");
+        if(sourceIt==sourceParts.end()) return false;
+        pugi::xml_document target, source;
+        parseXml(target,m_impl->templateParts.at("word/document.xml"));
+        parseXml(source,sourceIt->second);
+        canonicalizeWordPrefixes(target.document_element());
+        canonicalizeWordPrefixes(source.document_element());
+        auto targetBody=target.document_element().child("w:body");
+        auto sourceBody=source.document_element().child("w:body");
+        if(!targetBody || !sourceBody) return false;
+        auto targetPara=targetBody.child("w:p");
+        auto targetPPr=targetPara.child("w:pPr");
+        pugi::xml_node before=targetBody.child("w:sectPr");
+        for(auto child=sourceBody.first_child(); child; child=child.next_sibling()) {
+            if(std::string(child.name())=="w:sectPr") continue;
+            auto copy=before ? targetBody.insert_copy_before(child,before) : targetBody.append_copy(child);
+            if(format==MergeFormat::Target && std::string(copy.name())=="w:p") {
+                copy.remove_child("w:pPr");
+                if(targetPPr) {
+                    auto pPr=copy.prepend_child("w:pPr");
+                    for(const char* name : {"w:ind", "w:spacing", "w:jc", "w:keepNext", "w:keepLines", "w:widowControl"})
+                        if(auto property=targetPPr.child(name)) pPr.append_copy(property);
+                }
+                for(auto run:copy.select_nodes(".//w:r")) run.node().remove_child("w:rPr");
+            }
+        }
+        m_impl->templateParts["word/document.xml"]=xmlString(target);
+        return true;
+    } catch(...) { return false; }
+}
+bool Document::appendDocument(Document& other, MergeFormat format) {
+    if(!m_impl->isTemplate || !m_impl->templateParts.count("word/document.xml") ||
+       !other.m_impl->isTemplate || !other.m_impl->templateParts.count("word/document.xml")) return false;
+    try {
+        pugi::xml_document target, source;
+        parseXml(target,m_impl->templateParts.at("word/document.xml"));
+        parseXml(source,other.m_impl->templateParts.at("word/document.xml"));
+        canonicalizeWordPrefixes(target.document_element());
+        canonicalizeWordPrefixes(source.document_element());
+        auto targetBody=target.document_element().child("w:body");
+        auto sourceBody=source.document_element().child("w:body");
+        if(!targetBody || !sourceBody) return false;
+        auto targetPara=targetBody.child("w:p");
+        auto targetPPr=targetPara.child("w:pPr");
+        // Insert before the target sectPr, which must remain the final body child.
+        pugi::xml_node before=targetBody.child("w:sectPr");
+        for(auto child=sourceBody.first_child(); child; child=child.next_sibling()) {
+            if(std::string(child.name())=="w:sectPr") continue;
+            auto copy=before ? targetBody.insert_copy_before(child,before)
+                             : targetBody.append_copy(child);
+            if(format==MergeFormat::Target) {
+                // Removing direct paragraph/run properties makes content inherit
+                // the target Normal style while preserving text, tables and media.
+                if(std::string(copy.name())=="w:p") {
+                    copy.remove_child("w:pPr");
+                    if(targetPPr) {
+                        auto pPr=copy.prepend_child("w:pPr");
+                        for(const char* name : {"w:ind", "w:spacing", "w:jc", "w:keepNext", "w:keepLines", "w:widowControl"})
+                            if(auto property=targetPPr.child(name)) pPr.append_copy(property);
+                    }
+                    for(auto run:copy.select_nodes(".//w:r")) run.node().remove_child("w:rPr");
+                }
+            }
+        }
+        m_impl->templateParts["word/document.xml"]=xmlString(target);
+        return true;
+    } catch(...) { return false; }
+}
 Document& Document::set(const std::string& key,const std::string& value) { m_impl->vars[key]=value; return *this; }
 Document& Document::set(const std::string& key,const char* v) { return set(key,std::string(v)); }
 Document& Document::set(const std::string& key,bool v) { return set(key,std::string(v?"true":"false")); }
